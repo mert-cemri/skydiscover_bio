@@ -111,8 +111,7 @@ class GEPANativeController(DiscoveryController):
 
         result = None
         for iteration in range(start_iteration, total_iterations):
-            if self.shutdown_event.is_set():
-                logger.info("Shutdown requested, stopping discovery loop early")
+            if not await self._pre_iteration():
                 break
 
             try:

@@ -109,6 +109,14 @@ def _push_program_event(
         best_iter = getattr(best_prog, "iteration_found", 0)
         iters_since_improvement = iteration - best_iter
 
+    # HITL: check if this program was generated from a forced parent
+    is_forced = False
+    source = (getattr(program, "metadata", {}) or {}).get("source")
+    parent_info = getattr(program, "parent_info", None)
+    if parent_info and isinstance(parent_info, (list, tuple)) and len(parent_info) >= 1:
+        if str(parent_info[0]).lower() == "forced":
+            is_forced = True
+
     prog_data = {
         "id": program.id,
         "iteration": iteration,
@@ -125,6 +133,8 @@ def _push_program_event(
         "is_best": is_best,
         "generation": getattr(program, "generation", 0),
         "image_path": image_path,
+        "is_forced_parent": is_forced,
+        "source": source or "algorithmic",
     }
 
     stats = {

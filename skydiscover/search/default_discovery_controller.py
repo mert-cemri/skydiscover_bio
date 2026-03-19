@@ -10,6 +10,7 @@ import asyncio
 import logging
 import multiprocessing as mp
 import os
+import queue
 import time
 import uuid
 from dataclasses import dataclass
@@ -100,20 +101,23 @@ class DiscoveryController:
 
         self.monitor_callback: Optional[Callable] = None
         self.feedback_reader: Optional[Any] = None
+        self.ai_feedback_reader: Optional[Any] = None
         self._prompt_context: Dict[str, Any] = {}
 
         # Load evaluator/task description and inject into system message so
         # the LLM knows what problem to solve (especially for from-scratch).
         self._inject_evaluator_context()
 
+        # HITL: command queue (server -> controller) and pause control
+        self._command_queue: Optional[queue.Queue] = None
+        self._pause_event = asyncio.Event()
+        self._pause_event.set()  # starts unpaused
+        self._discovery_state = "running"  # "running", "paused", "stopped"
+        self._monitor_server: Optional[Any] = None  # for broadcasting state changes
+
         logger.info(
             f"DiscoveryController initialized: num_context_programs={self.num_context_programs}"
         )
-
-    def close(self):
-        """Release resources held by the evaluator (e.g. Docker containers)."""
-        if hasattr(self.evaluator, "close"):
-            self.evaluator.close()
 
     # ------------------------------------------------------------------
     # Initialisation helpers
@@ -149,6 +153,105 @@ class DiscoveryController:
             self.context_builder.set_templates(user_template=template_name)
         else:
             self.context_builder = DefaultContextBuilder(self.config)
+
+    # ------------------------------------------------------------------
+    # HITL: command queue and pause control
+    # ------------------------------------------------------------------
+
+    def set_command_queue(self, cmd_queue: queue.Queue) -> None:
+        """Set the command queue for receiving HITL commands from the monitor server."""
+        self._command_queue = cmd_queue
+
+    def set_monitor_server(self, server: Any) -> None:
+        """Set monitor server reference for broadcasting state changes."""
+        self._monitor_server = server
+
+    def _process_commands(self) -> None:
+        """Drain and process all pending HITL commands from the command queue."""
+        if not self._command_queue:
+            return
+        while True:
+            try:
+                cmd = self._command_queue.get_nowait()
+            except queue.Empty:
+                break
+
+            cmd_type = cmd.get("type", "")
+            try:
+                if cmd_type == "stop":
+                    logger.info("HITL command: stop")
+                    self.shutdown_event.set()
+                    self._discovery_state = "stopped"
+                    self._broadcast_discovery_state()
+
+                elif cmd_type == "pause":
+                    logger.info("HITL command: pause")
+                    self._pause_event.clear()
+                    self._discovery_state = "paused"
+                    self._broadcast_discovery_state()
+
+                elif cmd_type == "resume":
+                    logger.info("HITL command: resume")
+                    self._pause_event.set()
+                    self._discovery_state = "running"
+                    self._broadcast_discovery_state()
+
+                elif cmd_type == "force_parent":
+                    program_id = cmd.get("program_id", "")
+                    num_iterations = cmd.get("num_iterations", 1)
+                    success = self.database.set_forced_parent(program_id, num_iterations)
+                    if success:
+                        self._broadcast_forced_parent_state()
+
+                elif cmd_type == "clear_forced_parent":
+                    self.database.clear_forced_parent()
+                    self._broadcast_forced_parent_state()
+
+                else:
+                    logger.debug(f"Unknown HITL command: {cmd_type}")
+
+            except Exception as e:
+                logger.warning(f"Error processing HITL command {cmd_type}: {e}")
+
+    async def _pre_iteration(self) -> bool:
+        """Pre-iteration hook: process commands and wait if paused.
+
+        Returns False if shutdown was requested (caller should break).
+        """
+        self._process_commands()
+        if self.shutdown_event.is_set():
+            return False
+        # If paused, wait until resumed (or stopped)
+        if not self._pause_event.is_set():
+            logger.info("Discovery paused, waiting for resume...")
+            while not self._pause_event.is_set():
+                if self.shutdown_event.is_set():
+                    return False
+                await asyncio.sleep(0.2)
+                self._process_commands()
+            logger.info("Discovery resumed")
+        return True
+
+    def _broadcast_discovery_state(self) -> None:
+        """Broadcast current discovery state to dashboard clients."""
+        if self._monitor_server:
+            forced = self.database.forced_parent_id
+            self._monitor_server.push_event({
+                "type": "discovery_state",
+                "state": self._discovery_state,
+                "forced_parent_id": forced,
+                "forced_parent_remaining": self.database.forced_parent_remaining if forced else 0,
+            })
+
+    def _broadcast_forced_parent_state(self) -> None:
+        """Broadcast forced parent state change to dashboard clients."""
+        if self._monitor_server:
+            forced = self.database.forced_parent_id
+            self._monitor_server.push_event({
+                "type": "forced_parent_update",
+                "forced_parent_id": forced,
+                "forced_parent_remaining": self.database.forced_parent_remaining if forced else 0,
+            })
 
     async def _call_llm(self, system_message: str, user_message: str, **kwargs) -> LLMResponse:
         """Call the LLM, using agentic mode if enabled (text-only)."""
@@ -232,8 +335,7 @@ class DiscoveryController:
 
         result = None
         for iteration in range(start_iteration, total_iterations):
-            if self.shutdown_event.is_set():
-                logger.info("Shutdown requested, stopping discovery loop early")
+            if not await self._pre_iteration():
                 break
 
             try:
@@ -302,7 +404,7 @@ class DiscoveryController:
             return iteration, result
 
         for iteration in range(start_iteration, total_iterations):
-            if self.shutdown_event.is_set():
+            if not await self._pre_iteration():
                 break
 
             task = asyncio.create_task(_bounded_iteration(iteration), name=f"iter_{iteration}")
@@ -378,10 +480,11 @@ class DiscoveryController:
                 if feedback:
                     prompt = self.feedback_reader.apply_feedback(prompt)
 
-            llm_generation_time = 0.0
-            llm_start = time.time()
+            # Apply AI feedback (AITL)
+            if self.ai_feedback_reader:
+                prompt = self.ai_feedback_reader.apply_feedback(prompt)
+
             result = await self._call_llm(prompt["system"], prompt["user"])
-            llm_generation_time = time.time() - llm_start
             llm_response = result.text
             if not llm_response:
                 return SerializableResult(error="Empty LLM response", iteration=iteration)
@@ -436,9 +539,21 @@ class DiscoveryController:
             if not self.database.programs:
                 return await self._run_from_scratch_iteration(iteration)
 
-            raw_parent, raw_context_programs = self.database.sample(
-                num_context_programs=self.num_context_programs
-            )
+            # HITL: check for forced parent override
+            forced_parent = self.database.consume_forced_parent()
+            if forced_parent:
+                raw_parent = {"forced": forced_parent}
+                # Still get context programs from the database
+                _, raw_context_programs = self.database.sample(
+                    num_context_programs=self.num_context_programs
+                )
+                logger.info(
+                    f"Iteration {iteration}: using forced parent {forced_parent.id[:8]}..."
+                )
+            else:
+                raw_parent, raw_context_programs = self.database.sample(
+                    num_context_programs=self.num_context_programs
+                )
 
             # Normalize sample() result — databases may return plain or dict-wrapped
             if isinstance(raw_parent, dict):
@@ -508,9 +623,11 @@ class DiscoveryController:
                             iteration, feedback, self.feedback_reader.mode
                         )
 
+                # Apply AI feedback (AITL)
+                if self.ai_feedback_reader:
+                    prompt = self.ai_feedback_reader.apply_feedback(prompt)
+
                 try:
-                    llm_generation_time = 0.0
-                    llm_start = time.time()
                     if self.config.language == "image":
                         child_id = str(uuid.uuid4())
                         user_content = build_image_content(

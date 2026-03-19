@@ -122,8 +122,7 @@ class CoEvolutionController(DiscoveryController):
         # Run co-evolution
         iteration = start_iteration
         while iteration < self.total_solution_iterations:
-            if self.shutdown_event.is_set():
-                logger.info("Shutdown requested")
+            if not await self._pre_iteration():
                 break
 
             try:

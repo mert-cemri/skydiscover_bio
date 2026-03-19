@@ -1,0 +1,134 @@
+# Multi-agent math workflow evolution
+# Evolves agent pipeline, prompts, and coordination strategies simultaneously
+#
+# Usage:
+#   SOLVER_MODEL=gpt-4o-mini NUM_PROBLEMS=10 \
+#   skydiscover-run initial_program.py evaluator.py -c config.yaml -s adaevolve
+#
+# The initial program defines a 3-agent pipeline (translator → reasoner → verifier).
+# Evolution can modify anything inside the EVOLVE-BLOCK:
+#   - Agent count, roles, and system prompts
+#   - Graph topology (EDGES)
+#   - Coordination logic (retry, verification thresholds)
+#   - Helper functions and constants
+  # SOLVER_MODEL=gpt-4o-mini NUM_PROBLEMS=20
+  # uv run skydiscover-run \
+  #   benchmarks/multiagent/math/initial_program.py \
+  #   benchmarks/multiagent/math/evaluator.py \
+  #   --config benchmarks/multiagent/math/config.yaml
+
+language: python
+diff_based_generation: true
+max_iterations: 50
+checkpoint_interval: 5
+max_solution_length: 60000
+
+llm:
+  api_base: https://api.openai.com/v1
+  models:
+    - name: "gpt-5.2"
+      weight: 1.0
+  max_tokens: 16384
+  timeout: 200
+
+prompt:
+  system_message: |
+    You are evolving a multi-agent workflow for solving math problems.
+
+    ABSOLUTE RULE:
+    - You may ONLY modify code between the markers:
+      # EVOLVE-BLOCK-START
+      ...
+      # EVOLVE-BLOCK-END
+    - Do NOT change any code outside that region.
+
+    You MUST preserve:
+    - The AgentSpec dataclass definition (outside the block)
+    - The call_llm(system, user) function signature
+    - The extract_final_answer(text) function
+    - The run_agentic(question) entrypoint
+    - The run_pipeline(question) function and its return format
+
+    You MAY freely change INSIDE the EVOLVE-BLOCK:
+    1. AGENT_SPECS — add, remove, or modify agents (name, kind, system prompt)
+       Supported kinds: "translator", "reasoner", "verifier", "generic"
+    2. EDGES — rewire the agent graph topology
+       Format: list of (source, target) tuples, using "START" and "END" as terminals
+    3. System prompts — improve how agents are instructed
+    4. MAX_TURNS — control recursion depth (keep <= 14)
+    5. DISALLOWED_WORDS — words that trigger verification failure
+    6. VERIFICATION_MAX_LENGTH — output length threshold
+    7. should_retry() — when to retry reasoning after verification failure
+    8. Add new helper functions or constants inside the block
+
+    SCORING: combined_score = fraction of math problems answered correctly.
+    The program is evaluated on 10 competition-level math problems (MATH-500).
+    Agents use gpt-4o-mini to solve — you're optimizing the *workflow*, not the LLM.
+
+    TIPS:
+    - A translator that reformulates the problem clearly helps the reasoner
+    - Chain-of-thought in the reasoner prompt improves accuracy
+    - Adding a "checker" agent that re-solves independently can catch errors
+    - Retry logic after verification failure can recover from bad attempts
+    - More than 10 agents incurs a small penalty (-0.01 per extra agent)
+    - Keep it simple — fewer, better-prompted agents often beat many agents
+
+
+search:
+  type: "adaevolve"
+  num_context_programs: 3
+  database:
+    population_size: 20
+
+    # Island configuration
+    num_islands: 2
+    migration_interval: 10
+    migration_count: 3
+
+    # AdaEvolve parameters
+    decay: 0.9
+    intensity_min: 0.15
+    intensity_max: 0.5
+
+    # Archive
+    use_unified_archive: true
+    fitness_weight: 1.0
+    novelty_weight: 0.0
+    diversity_strategy: "code"
+
+    # Dynamic islands
+    use_dynamic_islands: true
+    max_islands: 4
+    spawn_stagnation_threshold: 0.02
+    spawn_cooldown_iterations: 15
+
+    # Paradigm breakthrough
+    use_paradigm_breakthrough: true
+    paradigm_window_size: 10
+    paradigm_improvement_threshold: 0.10
+    paradigm_max_uses: 3
+
+evaluator:
+  timeout: 360
+  cascade_evaluation: true
+  cascade_thresholds:
+    - 0.05
+    - 0.3
+
+# Human-in-the-loop: manual feedback via dashboard Steer panel
+human_feedback_enabled: true
+human_feedback_mode: append
+
+# AI-in-the-loop: autonomous AI feedback every N iterations
+ai_feedback:
+  enabled: true
+  model: gpt-5.2
+  interval: 5             # Analyze every 5 iterations
+  min_population: 5       # Wait until 5 programs discovered
+  max_cost_dollars: 999999.0  # No budget limit
+  auto_clear_after: 15    # Clear if no improvement after 15 iters
+  include_problem_description: true
+
+monitor:
+  enabled: true
+  port: 8888

@@ -11,6 +11,8 @@
     --bg:         #0d1117;
     --bg2:        #161b22;
     --bg3:        #21262d;
+    --shell-bg:   #161b22;
+    --canvas-bg:  #0d1117;
     --text:       #e6edf3;
     --text-dim:   #7d8590;
     --accent:     #ff7b72;
@@ -27,6 +29,15 @@
     --tag-ctxby-bg:   rgba(88,166,255,0.15);
     --hf-active-bg:  rgba(63,185,80,0.08);
     --hf-active-border: rgba(63,185,80,0.2);
+    --diff-add-bg: rgba(63,185,80,0.15);
+    --diff-del-bg: rgba(255,123,114,0.15);
+    --diff-add-color: #3fb950;
+    --diff-del-color: #ff7b72;
+    --stat-card-bg: #21262d;
+    --pill-up-bg: rgba(63,185,80,0.18);
+    --pill-up-color: #3fb950;
+    --pill-down-bg: rgba(255,123,114,0.18);
+    --pill-down-color: #ff7b72;
   }
 
   /* ── Light theme (default) ───────────────────────── */
@@ -34,6 +45,8 @@
     --bg:         #f0f2f5;
     --bg2:        #ffffff;
     --bg3:        #e8ecf0;
+    --shell-bg:   #f3f4f6;
+    --canvas-bg:  #ffffff;
     --text:       #1f2328;
     --text-dim:   #656d76;
     --accent:     #cf222e;
@@ -50,319 +63,320 @@
     --tag-ctxby-bg:   rgba(9,105,218,0.08);
     --hf-active-bg:  rgba(26,127,55,0.06);
     --hf-active-border: rgba(26,127,55,0.2);
+    --diff-add-bg: rgba(26,127,55,0.1);
+    --diff-del-bg: rgba(207,34,46,0.1);
+    --diff-add-color: #1a7f37;
+    --diff-del-color: #cf222e;
+    --stat-card-bg: #ffffff;
+    --pill-up-bg: rgba(26,127,55,0.1);
+    --pill-up-color: #116329;
+    --pill-down-bg: rgba(207,34,46,0.1);
+    --pill-down-color: #cf222e;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
     font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
     background: var(--bg);
     color: var(--text);
-    min-height: 100vh;
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
     transition: background-color 0.25s ease, color 0.25s ease;
   }
-  .header, .stats-bar, .panel, .summary-panel, .hf-panel, .code-block, .metric-item {
+  .header, .stats-bar, .panel, .chat-section, .summary-section, .hf-panel, .code-block, .metric-item {
     transition: background-color 0.25s ease, border-color 0.25s ease, color 0.25s ease;
   }
 
-  /* Header */
+  /* ── Header ── */
   .header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 12px 20px;
-    background: var(--bg2);
+    padding: 8px 16px;
+    background: var(--shell-bg);
     border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    z-index: 10;
   }
-  .header h1 {
-    font-size: 18px;
-    font-weight: 600;
-    letter-spacing: 0.5px;
-  }
+  .header h1 { font-size: 15px; font-weight: 600; letter-spacing: 0.5px; }
   .header h1 span { color: var(--accent); }
   .status-badge {
-    padding: 4px 12px;
+    padding: 3px 10px;
     border-radius: 12px;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 600;
   }
   .status-badge.connected { background: var(--tag-child-bg); color: var(--green); }
   .status-badge.disconnected { background: var(--tag-parent-bg); color: var(--accent); }
 
-  /* Stats Bar */
+  /* ── Stats Bar ── */
   .stats-bar {
     display: flex;
     align-items: center;
-    gap: 24px;
-    padding: 10px 20px;
-    background: var(--bg2);
+    gap: 8px;
+    padding: 6px 16px;
+    background: var(--shell-bg);
     border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
     flex-wrap: wrap;
   }
   .stat {
     display: flex;
-    align-items: baseline;
-    gap: 6px;
-    font-size: 13px;
+    flex-direction: column;
+    align-items: center;
+    gap: 1px;
+    padding: 4px 12px;
+    background: var(--stat-card-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    min-width: 64px;
   }
-  .stat-label { color: var(--text-dim); }
-  .stat-value { font-weight: 600; font-size: 15px; }
+  .stat-label { color: var(--text-dim); font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+  .stat-value { font-weight: 700; font-size: 14px; }
   .stat-value.best { color: var(--green); }
-  .search-box {
-    margin-left: auto;
+
+  /* ── IDE Layout ── */
+  .ide-layout {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    grid-template-rows: 1fr auto;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  /* ── Center Stage ── */
+  .center-stage {
+    grid-column: 1;
+    grid-row: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    padding: 8px 8px 0 8px;
+    background: var(--canvas-bg);
+  }
+  .plot-container { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; }
+  #scatter-plot { flex: 1; min-height: 0; width: 100%; }
+  #activity-timeline { flex-shrink: 0; height: 24px; width: 100%; cursor: default; }
+  .plot-toolbar {
     display: flex;
     align-items: center;
     gap: 6px;
-  }
-  .search-box input {
-    background: var(--bg);
-    border: 1px solid var(--border);
-    color: var(--text);
-    padding: 4px 10px;
-    border-radius: 4px;
-    font-size: 12px;
-    width: 160px;
-  }
-
-  /* Main Plot */
-  .plot-container {
-    padding: 10px 20px;
-  }
-  #scatter-plot {
-    width: 100%;
-    height: 38vh;
-    min-height: 250px;
-  }
-
-  /* Bottom Panels */
-  .bottom-panels {
-    display: grid;
-    grid-template-columns: 0.6fr 1.7fr 1.7fr;
-    gap: 12px;
-    padding: 0 20px 20px;
-  }
-  .panel {
-    background: var(--bg2);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 14px;
-    overflow: auto;
-    max-height: 50vh;
-    box-shadow: 0 1px 3px var(--shadow);
-  }
-  .panel h3 {
-    font-size: 14px;
-    margin-bottom: 10px;
-    color: var(--text-dim);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-  }
-  .detail-row {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 6px;
-    font-size: 13px;
-  }
-  .detail-label {
-    color: var(--text-dim);
-    min-width: 80px;
+    padding: 4px 0;
     flex-shrink: 0;
   }
-  .detail-value {
-    color: var(--text);
-    word-break: break-all;
-  }
-  .detail-value code {
-    background: var(--bg);
-    padding: 1px 5px;
+  .plot-toolbar-btn {
+    padding: 3px 8px;
     border-radius: 3px;
-    font-family: 'Fira Code', 'Consolas', monospace;
-    font-size: 12px;
-  }
-  .detail-value.score { color: var(--green); font-weight: 600; }
-  .detail-value.score code { color: var(--green); }
-  .code-block {
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 10px;
-    font-family: 'Fira Code', 'Consolas', monospace;
-    font-size: 12px;
-    white-space: pre-wrap;
-    overflow-x: auto;
-    max-height: 30vh;
-    margin-top: 8px;
-    color: var(--text);
-    line-height: 1.5;
-    text-align: left;
-  }
-  .code-tabs {
-    display: flex;
-    gap: 8px;
-    margin-top: 8px;
-    margin-bottom: 4px;
-  }
-  .code-tab {
-    padding: 4px 12px;
-    border-radius: 4px;
-    font-size: 12px;
-    cursor: pointer;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    color: var(--text-dim);
-  }
-  .code-tab.active {
-    background: var(--bg3);
-    color: var(--text);
-    border-color: var(--accent);
-  }
-  .metrics-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-    gap: 6px;
-    margin-top: 8px;
-  }
-  .metric-item {
-    background: var(--bg);
-    border-radius: 4px;
-    padding: 6px 10px;
-    font-size: 12px;
-  }
-  .metric-item .key { color: var(--text-dim); }
-  .metric-item .val { color: var(--green); font-weight: 600; }
-  .lineage-tag {
-    display: inline-block;
-    padding: 2px 8px;
-    border-radius: 4px;
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 600;
-    margin-right: 4px;
-  }
-  .tag-parent { background: var(--tag-parent-bg); color: var(--accent); }
-  .tag-context { background: var(--tag-context-bg); color: var(--purple); }
-  .tag-child { background: var(--tag-child-bg); color: var(--green); }
-  .tag-ctx-usage { background: var(--tag-ctxby-bg); color: var(--blue); }
-  .lineage-tag[onclick] { cursor: pointer; transition: filter 0.15s; }
-  .lineage-tag[onclick]:hover { filter: brightness(1.3); }
-  .lineage-section { margin-bottom: 2px; }
-  .lineage-section .detail-value { display: flex; flex-wrap: wrap; gap: 3px; align-items: center; }
-
-  .empty-state {
-    color: var(--text-dim);
-    text-align: center;
-    padding: 40px;
-    font-size: 14px;
-  }
-
-  /* Human Feedback Panel */
-  .hf-panel {
-    margin: 0 20px 12px;
-    background: var(--bg2);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    overflow: hidden;
-    transition: border-color 0.3s;
-  }
-  .hf-panel.active {
-    border-color: var(--green);
-  }
-  .hf-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 10px 14px;
     cursor: pointer;
-    user-select: none;
+    border: 1px solid var(--border);
+    background: var(--bg2);
+    color: var(--text-dim);
+    transition: all 0.15s;
   }
-  .hf-header:hover { background: rgba(255,255,255,0.02); }
-  .hf-title {
+  .plot-toolbar-btn:hover { background: var(--bg3); }
+  .plot-toolbar-btn.active { background: var(--cyan); color: #0d1117; border-color: var(--cyan); }
+  [data-theme="light"] .plot-toolbar-btn.active { color: #fff; }
+
+  /* Metrics chart in drawer */
+  #metrics-chart-container { display: none; }
+
+  /* ── Right Sidebar ── */
+  .right-sidebar {
+    grid-column: 2;
+    grid-row: 1 / 3;
     display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 13px;
+    flex-direction: column;
+    border-left: 1px solid var(--border);
+    background: var(--shell-bg);
+    min-height: 0;
+    overflow: hidden;
+  }
+  .sidebar-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    background: var(--shell-bg);
+  }
+  .sidebar-tab {
+    flex: 1;
+    padding: 8px 6px;
+    font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 1px;
+    letter-spacing: 0.5px;
+    text-align: center;
+    cursor: pointer;
     color: var(--text-dim);
+    border-bottom: 2px solid transparent;
+    transition: all 0.15s;
+    user-select: none;
   }
-  .hf-status {
-    padding: 2px 10px;
-    border-radius: 10px;
-    font-size: 11px;
+  .sidebar-tab:hover { color: var(--text); background: var(--bg); }
+  .sidebar-tab.active { color: var(--cyan); border-bottom-color: var(--cyan); }
+  .sidebar-tab .badge {
+    display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent); margin-left: 4px; vertical-align: top;
+    animation: badgePulse 1.5s infinite;
+  }
+  @keyframes badgePulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+  .sidebar-panel {
+    flex: 1;
+    display: none;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .sidebar-panel.active { display: flex; }
+
+  /* Summary panel */
+  .summary-panel-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 12px;
+    font-size: 12px;
+    line-height: 1.6;
+  }
+  .summary-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 6px 12px;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--border);
+    background: var(--shell-bg);
+  }
+  .summary-refresh-btn {
+    padding: 2px 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg);
+    color: var(--cyan);
+    font-size: 10px;
+    cursor: pointer;
     font-weight: 600;
   }
-  .hf-status.active { background: var(--tag-child-bg); color: var(--green); }
-  .hf-status.inactive { background: var(--bg3); color: var(--text-dim); }
-  .hf-status.disabled { background: var(--tag-parent-bg); color: var(--accent); }
-  .hf-toggle { color: var(--text-dim); font-size: 12px; }
-  .hf-body {
-    padding: 0 14px 14px;
-    display: none;
+  .summary-refresh-btn:hover { background: var(--bg3); }
+  .summary-refresh-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Agent chat panel */
+  .chat-section {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
   }
-  .hf-panel.open .hf-body { display: block; }
+  .chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 0;
+  }
+  .chat-msg {
+    padding: 6px 10px;
+    border-radius: 8px;
+    font-size: 12px;
+    line-height: 1.5;
+    max-width: 95%;
+    word-wrap: break-word;
+  }
+  .chat-msg-wrapper {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+  }
+  .chat-msg-wrapper.user-wrapper { flex-direction: row-reverse; }
+  .chat-avatar {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  .chat-avatar.user-avatar { background: var(--tag-ctxby-bg); color: var(--blue); }
+  .chat-avatar.ai-avatar { background: var(--tag-context-bg); color: var(--purple); }
+  .chat-msg.user {
+    background: var(--tag-ctxby-bg);
+    color: var(--text);
+    border-bottom-right-radius: 2px;
+  }
+  .chat-msg.ai {
+    background: var(--canvas-bg);
+    color: var(--text);
+    border-bottom-left-radius: 2px;
+    border: 1px solid var(--border);
+  }
+  .chat-msg.ai .summary-body { font-size: 12px; line-height: 1.5; }
+  .chat-msg.system {
+    background: none;
+    color: var(--text-dim);
+    font-size: 11px;
+    text-align: center;
+    align-self: center;
+    font-style: italic;
+  }
+  .chat-input-row {
+    display: flex;
+    gap: 6px;
+    padding: 8px;
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .chat-input {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-family: inherit;
+    resize: none;
+    min-height: 32px;
+    max-height: 60px;
+  }
+  .chat-input:focus { outline: none; border-color: var(--cyan); }
+  .chat-input::placeholder { color: var(--text-dim); }
+  .chat-send-btn {
+    padding: 6px 12px;
+    border: none;
+    border-radius: 6px;
+    background: var(--cyan);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    align-self: flex-end;
+  }
+  [data-theme="dark"] .chat-send-btn { color: #0d1117; }
+  .chat-send-btn:hover { filter: brightness(1.1); }
+  .chat-send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Steer panel (human feedback) */
+  .steer-panel-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 12px;
+  }
   .hf-help {
     font-size: 11px;
     color: var(--text-dim);
     margin-bottom: 8px;
     line-height: 1.5;
   }
-  .hf-input-row {
-    display: flex;
-    gap: 8px;
-    align-items: flex-start;
-  }
-  .hf-textarea {
-    flex: 1;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    color: var(--text);
-    padding: 8px 10px;
-    border-radius: 4px;
-    font-family: 'Fira Code', 'Consolas', monospace;
-    font-size: 12px;
-    resize: vertical;
-    min-height: 48px;
-    max-height: 120px;
-    line-height: 1.4;
-  }
-  .hf-textarea:focus { outline: none; border-color: var(--cyan); }
-  .hf-textarea::placeholder { color: var(--text-dim); }
-  .hf-btn {
-    padding: 8px 16px;
-    border: none;
-    border-radius: 4px;
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    white-space: nowrap;
-  }
-  .hf-btn.send {
-    background: var(--green);
-    color: #fff;
-  }
-  [data-theme="dark"] .hf-btn.send { color: #0d1117; }
-  .hf-btn.send:hover { filter: brightness(1.1); }
-  .hf-btn.clear {
-    background: var(--tag-parent-bg);
-    color: var(--accent);
-    border: 1px solid var(--tag-parent-bg);
-  }
-  .hf-btn.clear:hover { filter: brightness(1.1); }
-  .hf-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-  .hf-current {
-    margin-top: 8px;
-    padding: 8px 10px;
-    background: var(--hf-active-bg);
-    border: 1px solid var(--hf-active-border);
-    border-radius: 4px;
-    font-size: 12px;
-    color: var(--green);
-    font-family: 'Fira Code', 'Consolas', monospace;
-    white-space: pre-wrap;
-    line-height: 1.4;
-    display: none;
-  }
-  .hf-current.visible { display: block; }
-
-  /* Human Feedback Mode Toggle */
   .hf-mode-toggle {
     display: flex;
     align-items: center;
@@ -387,26 +401,139 @@
     color: var(--text-dim);
     transition: all 0.2s;
   }
-  .hf-mode-btn.active {
-    background: var(--cyan);
-    color: #0d1117;
-    border-color: var(--cyan);
-  }
+  .hf-mode-btn.active { background: var(--cyan); color: #0d1117; border-color: var(--cyan); }
   [data-theme="light"] .hf-mode-btn.active { color: #fff; }
+  .hf-input-row {
+    display: flex;
+    gap: 6px;
+    align-items: flex-start;
+  }
+  .hf-textarea {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 10px;
+    border-radius: 4px;
+    font-family: 'Fira Code', 'Consolas', monospace;
+    font-size: 12px;
+    resize: vertical;
+    min-height: 48px;
+    max-height: 120px;
+    line-height: 1.4;
+  }
+  .hf-textarea:focus { outline: none; border-color: var(--cyan); box-shadow: 0 0 0 3px rgba(5,152,193,0.15); }
+  .hf-textarea::placeholder { color: var(--text-dim); }
+  .hf-btn {
+    padding: 6px 14px;
+    border: none;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .hf-btn.send { background: var(--green); color: #fff; }
+  [data-theme="dark"] .hf-btn.send { color: #0d1117; }
+  .hf-btn.send:hover { filter: brightness(1.1); }
+  .hf-btn.clear { background: var(--tag-parent-bg); color: var(--accent); border: 1px solid var(--tag-parent-bg); }
+  .hf-btn.clear:hover { filter: brightness(1.1); }
+  .hf-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .hf-current {
+    margin-top: 8px;
+    padding: 8px 10px;
+    background: var(--hf-active-bg);
+    border: 1px solid var(--hf-active-border);
+    border-radius: 4px;
+    font-size: 12px;
+    color: var(--green);
+    font-family: 'Fira Code', 'Consolas', monospace;
+    white-space: pre-wrap;
+    line-height: 1.4;
+    display: none;
+  }
+  .hf-current.visible { display: block; }
+  .hf-status-inline {
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 600;
+    margin-left: auto;
+  }
+  .hf-status-inline.active { background: var(--tag-child-bg); color: var(--green); }
+  .hf-status-inline.inactive { background: var(--bg3); color: var(--text-dim); }
+  .hf-status-inline.disabled { background: var(--tag-parent-bg); color: var(--accent); }
+  .suggest-btn {
+    padding: 3px 10px;
+    border: 1px solid var(--cyan);
+    border-radius: 4px;
+    background: var(--bg);
+    color: var(--cyan);
+    font-size: 11px;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .suggest-btn:hover { background: var(--bg3); }
+  .suggest-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-  /* System Prompt Viewer */
-  .hf-prompt-viewer {
-    margin-top: 10px;
+  /* AI feedback section */
+  .ai-feedback-section {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+  }
+  .ai-feedback-text {
+    margin-top: 6px;
+    padding: 8px 10px;
+    background: var(--bg);
     border: 1px solid var(--border);
     border-radius: 4px;
+    font-size: 12px;
+    color: var(--cyan);
+    font-family: 'Fira Code', 'Consolas', monospace;
+    white-space: pre-wrap;
+    line-height: 1.4;
+    max-height: 120px;
+    overflow-y: auto;
+    display: none;
+  }
+  .ai-feedback-text.visible { display: block; }
+  .ai-cost-bar {
+    margin-top: 6px;
+    height: 4px;
+    background: var(--bg3);
+    border-radius: 2px;
     overflow: hidden;
   }
-  .hf-prompt-header {
+  .ai-cost-fill {
+    height: 100%;
+    background: var(--cyan);
+    border-radius: 2px;
+    transition: width 0.3s ease;
+  }
+  .ai-cost-fill.exhausted { background: var(--accent); }
+  .ai-cost-label {
+    font-size: 10px;
+    color: var(--text-dim);
+    margin-top: 2px;
+  }
+  .ai-status-inline {
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 600;
+    margin-left: auto;
+  }
+  .ai-status-inline.active { background: rgba(5,152,193,0.15); color: var(--cyan); }
+  .ai-status-inline.inactive { background: var(--bg3); color: var(--text-dim); }
+  .ai-status-inline.disabled { background: var(--tag-parent-bg); color: var(--accent); }
+
+  /* Collapsible sections in steer panel */
+  .collapsible-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 6px 10px;
-    background: var(--bg3);
+    padding: 6px 0;
     cursor: pointer;
     font-size: 11px;
     color: var(--text-dim);
@@ -414,68 +541,41 @@
     text-transform: uppercase;
     letter-spacing: 0.5px;
     user-select: none;
+    margin-top: 10px;
+    border-top: 1px solid var(--border);
+    padding-top: 10px;
   }
-  .hf-prompt-header:hover { background: var(--bg); }
+  .collapsible-header:hover { color: var(--text); }
+  .collapsible-body { display: none; margin-top: 6px; }
+  .collapsible-body.open { display: block; }
   .hf-prompt-body {
-    display: none;
-    padding: 10px;
+    padding: 8px;
     background: var(--bg);
     font-family: 'Fira Code', 'Consolas', monospace;
     font-size: 11px;
     white-space: pre-wrap;
-    max-height: 200px;
+    max-height: 160px;
     overflow-y: auto;
     line-height: 1.5;
     color: var(--text);
-  }
-  .hf-prompt-viewer.open .hf-prompt-body { display: block; }
-
-  /* Human Feedback History Timeline */
-  .hf-history {
-    margin-top: 10px;
-    border: 1px solid var(--border);
     border-radius: 4px;
-    overflow: hidden;
+    border: 1px solid var(--border);
   }
-  .hf-history-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 6px 10px;
-    background: var(--bg3);
-    cursor: pointer;
-    font-size: 11px;
-    color: var(--text-dim);
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    user-select: none;
-  }
-  .hf-history-header:hover { background: var(--bg); }
-  .hf-history-body {
-    display: none;
-    max-height: 200px;
-    overflow-y: auto;
-  }
-  .hf-history.open .hf-history-body { display: block; }
   .hf-history-entry {
-    padding: 8px 10px;
+    padding: 6px 0;
     border-bottom: 1px solid var(--border);
     font-size: 12px;
   }
   .hf-history-entry:last-child { border-bottom: none; }
   .hf-history-entry .meta {
     display: flex;
-    gap: 10px;
+    gap: 8px;
     align-items: center;
     font-size: 10px;
     color: var(--text-dim);
-    margin-bottom: 4px;
+    margin-bottom: 3px;
   }
-  .hf-history-entry .meta .iter {
-    color: var(--cyan);
-    font-weight: 600;
-  }
+  .hf-history-entry .meta .iter { color: var(--cyan); font-weight: 600; }
   .hf-history-entry .meta .mode-tag {
     padding: 0 6px;
     border-radius: 3px;
@@ -483,115 +583,442 @@
     text-transform: uppercase;
     font-size: 9px;
   }
-  .hf-history-entry .meta .mode-tag.append {
-    background: rgba(86,212,221,0.15);
-    color: var(--cyan);
-  }
-  .hf-history-entry .meta .mode-tag.replace {
-    background: rgba(255,123,114,0.15);
-    color: var(--accent);
-  }
+  .hf-history-entry .meta .mode-tag.append { background: rgba(86,212,221,0.15); color: var(--cyan); }
+  .hf-history-entry .meta .mode-tag.replace { background: rgba(255,123,114,0.15); color: var(--accent); }
   .hf-history-entry .feedback-text {
     font-family: 'Fira Code', 'Consolas', monospace;
     font-size: 11px;
     color: var(--text);
     white-space: pre-wrap;
     line-height: 1.4;
-    max-height: 60px;
+    max-height: 50px;
     overflow: hidden;
-    text-overflow: ellipsis;
   }
 
-  /* AI Summary Panel */
-  .summary-panel {
-    background: var(--bg2);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 14px;
-    overflow: auto;
+  /* ── Bottom Drawer ── */
+  .bottom-drawer {
+    grid-column: 1;
+    grid-row: 2;
+    border-top: 2px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    min-height: 36px;
     max-height: 50vh;
-    box-shadow: 0 1px 3px var(--shadow);
+    overflow: hidden;
+    transition: max-height 0.2s ease;
   }
-  .summary-panel h3 {
-    font-size: 14px;
-    margin-bottom: 10px;
+  .bottom-drawer.collapsed { max-height: 36px; }
+  .drawer-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 6px 12px;
+    background: var(--shell-bg);
+    cursor: pointer;
+    flex-shrink: 0;
+    user-select: none;
+    border-bottom: 1px solid var(--border);
+  }
+  .drawer-header:hover { background: var(--bg3); }
+  .drawer-tab {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-dim);
+    padding: 2px 8px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.15s;
+  }
+  .drawer-tab.active { color: var(--cyan); border-bottom-color: var(--cyan); }
+  .drawer-tab:hover { color: var(--text); }
+  .drawer-toggle {
+    margin-left: auto;
+    font-size: 10px;
+    color: var(--text-dim);
+    font-weight: 600;
+  }
+  .drawer-content {
+    flex: 1;
+    overflow: auto;
+    display: none;
+    background: var(--shell-bg);
+  }
+  .drawer-content.active { display: flex; }
+  .drawer-pane {
+    flex: 1;
+    padding: 10px 14px;
+    overflow-y: auto;
+    min-width: 0;
+  }
+  .drawer-pane.narrow { flex: 0 0 260px; max-width: 280px; }
+  .drawer-pane + .drawer-pane {
+    border-left: 1px solid var(--border);
+  }
+  /* Side-by-side code panes */
+  .code-side-pane {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    padding: 10px 14px;
+    overflow-y: auto;
+  }
+  .code-side-pane + .code-side-pane { border-left: 1px solid var(--border); }
+  .code-side-pane h4 {
+    font-size: 10px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+    font-weight: 700;
+  }
+  .code-side-pane .code-block {
+    flex: 1;
+    margin-top: 0;
+    max-height: none;
+    padding: 0;
+    overflow-y: auto;
+  }
+  .code-lined {
+    display: table;
+    width: 100%;
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .code-line {
+    display: table-row;
+  }
+  .code-line.changed {
+    background: var(--diff-del-bg);
+  }
+  .code-line.added {
+    background: var(--diff-add-bg);
+  }
+  .code-gutter {
+    display: table-cell;
+    text-align: right;
+    padding: 0 8px 0 4px;
+    color: var(--text-dim);
+    opacity: 0.5;
+    user-select: none;
+    white-space: nowrap;
+    width: 1%;
+    font-size: 11px;
+    border-right: 1px solid var(--border);
+  }
+  .code-content {
+    display: table-cell;
+    padding: 0 8px;
+    white-space: pre;
+  }
+
+  /* ── Panel shared styles ── */
+  .panel h3 {
+    font-size: 12px;
+    margin-bottom: 8px;
     color: var(--text-dim);
     text-transform: uppercase;
     letter-spacing: 1px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
   }
-  .summary-refresh-btn {
-    padding: 3px 10px;
+  .detail-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 4px;
+    font-size: 12px;
+  }
+  .detail-label {
+    color: var(--text-dim);
+    min-width: 72px;
+    flex-shrink: 0;
+    font-size: 11px;
+  }
+  .detail-value {
+    color: var(--text);
+    word-break: break-all;
+  }
+  .detail-value code {
+    background: var(--bg);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-family: 'Fira Code', 'Consolas', monospace;
+    font-size: 12px;
+  }
+  .detail-value.score { font-weight: 700; }
+  .detail-value.score code {
+    background: rgba(63,185,80,0.12);
+    color: var(--green);
+    padding: 2px 8px;
+    font-size: 13px;
+  }
+  [data-theme="light"] .detail-value.score code {
+    background: rgba(26,127,55,0.1);
+    color: #116329;
+  }
+
+  /* Color-coded metrics grid */
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 4px;
+    margin-top: 6px;
+  }
+  .metric-item {
+    background: var(--bg);
+    border-radius: 4px;
+    padding: 5px 8px;
+    font-size: 11px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-left: 3px solid transparent;
+  }
+  .metric-item .key { color: var(--text-dim); }
+  .metric-item .val { font-weight: 600; font-family: 'Fira Code', 'Consolas', monospace; font-size: 11px; }
+  .metric-item.improved { border-left-color: var(--green); }
+  .metric-item.improved .val { color: var(--green); }
+  .metric-item.regressed { border-left-color: var(--accent); }
+  .metric-item.regressed .val { color: var(--accent); }
+  .metric-item.neutral .val { color: var(--text); }
+  .metric-delta {
+    display: inline-block;
+    font-size: 9px;
+    margin-left: 4px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 8px;
+    vertical-align: middle;
+  }
+  .metric-delta.up { background: var(--pill-up-bg); color: var(--pill-up-color); }
+  .metric-delta.down { background: var(--pill-down-bg); color: var(--pill-down-color); }
+
+  .code-block {
+    background: var(--bg);
     border: 1px solid var(--border);
     border-radius: 4px;
-    background: var(--bg);
-    color: var(--cyan);
+    padding: 10px;
+    font-family: 'Fira Code', 'Consolas', monospace;
+    font-size: 11px;
+    white-space: pre-wrap;
+    overflow-x: auto;
+    max-height: 30vh;
+    margin-top: 6px;
+    color: var(--text);
+    line-height: 1.5;
+    text-align: left;
+  }
+  .code-tabs {
+    display: flex;
+    gap: 4px;
+    margin-top: 8px;
+  }
+  .code-tab {
+    padding: 3px 10px;
+    border-radius: 4px 4px 0 0;
     font-size: 11px;
     cursor: pointer;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-bottom: none;
+    color: var(--text-dim);
     font-weight: 600;
-    text-transform: none;
-    letter-spacing: 0;
   }
-  .summary-refresh-btn:hover { background: var(--bg3); }
-  .summary-refresh-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-  .summary-body {
+  .code-tab.active { background: var(--bg3); color: var(--text); border-color: var(--cyan); }
+
+
+  /* Lineage tags */
+  .lineage-tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    margin-right: 3px;
+  }
+  .tag-parent { background: var(--tag-parent-bg); color: var(--accent); }
+  .tag-context { background: var(--tag-context-bg); color: var(--purple); }
+  .tag-child { background: var(--tag-child-bg); color: var(--green); }
+  .tag-ctx-usage { background: var(--tag-ctxby-bg); color: var(--blue); }
+  .lineage-tag[onclick] { cursor: pointer; transition: filter 0.15s; }
+  .lineage-tag[onclick]:hover { filter: brightness(1.3); }
+  .lineage-section { margin-bottom: 2px; }
+  .lineage-section .detail-value { display: flex; flex-wrap: wrap; gap: 3px; align-items: center; }
+
+  .empty-state {
+    color: var(--text-dim);
+    text-align: center;
+    padding: 30px;
     font-size: 13px;
+  }
+
+  /* HITL Transport Controls */
+  .transport-controls { display: flex; align-items: center; gap: 5px; }
+  .transport-btn {
+    padding: 3px 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text-dim);
+    transition: all 0.2s;
+  }
+  .transport-btn:hover { background: var(--bg3); }
+  .transport-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+  .transport-btn.play { color: var(--green); border-color: var(--green); }
+  .transport-btn.play:hover { background: rgba(63,185,80,0.1); }
+  .transport-btn.pause { color: var(--orange); border-color: var(--orange); }
+  .transport-btn.pause:hover { background: rgba(210,153,34,0.1); }
+  .transport-btn.stop { color: var(--accent); border-color: var(--accent); }
+  .transport-btn.stop:hover { background: rgba(255,123,114,0.1); }
+  .transport-state {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 10px;
+  }
+  .transport-state.running { background: rgba(63,185,80,0.15); color: var(--green); }
+  .transport-state.paused { background: rgba(210,153,34,0.15); color: var(--orange); }
+  .transport-state.stopped { background: rgba(255,123,114,0.15); color: var(--accent); }
+  .forced-parent-indicator {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: rgba(188,140,255,0.15);
+    color: var(--purple);
+    cursor: pointer;
+  }
+  .forced-parent-indicator:hover { background: rgba(188,140,255,0.25); }
+
+  /* HITL force parent UI */
+  .hitl-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .hitl-action-btn {
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text-dim);
+    transition: all 0.2s;
+  }
+  .hitl-action-btn:hover { background: var(--bg3); }
+  .hitl-action-btn.force-parent { color: var(--purple); border-color: var(--purple); }
+  .hitl-action-btn.force-parent:hover { background: rgba(188,140,255,0.15); }
+  .hitl-custom-count {
+    width: 44px;
+    padding: 3px 5px;
+    border: 1px solid var(--purple);
+    border-radius: 4px;
+    background: var(--bg);
+    color: var(--purple);
+    font-size: 11px;
+    font-weight: 600;
+    text-align: center;
+  }
+  .hitl-custom-count:focus { outline: none; box-shadow: 0 0 0 2px rgba(188,140,255,0.2); }
+
+  /* Summary body (reused in chat messages) */
+  .summary-body {
+    font-size: 12px;
     line-height: 1.6;
     color: var(--text);
     word-wrap: break-word;
   }
   .summary-body h2 {
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 700;
     color: var(--cyan);
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    margin: 12px 0 6px;
+    margin: 10px 0 4px;
     padding-bottom: 3px;
     border-bottom: 1px solid var(--border);
   }
   .summary-body h2:first-child { margin-top: 0; }
-  .summary-body ul {
-    margin: 4px 0;
-    padding-left: 18px;
-  }
-  .summary-body li {
-    margin-bottom: 3px;
-    line-height: 1.5;
-  }
-  .summary-body p {
-    margin: 4px 0;
-  }
-  .summary-body strong {
-    color: var(--green);
-  }
+  .summary-body ul { margin: 4px 0; padding-left: 16px; }
+  .summary-body li { margin-bottom: 2px; line-height: 1.5; }
+  .summary-body p { margin: 3px 0; }
+  .summary-body strong { color: var(--green); }
   .summary-body code {
     background: var(--bg);
-    padding: 1px 5px;
+    padding: 1px 4px;
     border-radius: 3px;
-    font-size: 12px;
+    font-size: 11px;
     color: var(--orange);
   }
   .summary-spinner {
     display: inline-block;
-    width: 14px;
-    height: 14px;
+    width: 12px;
+    height: 12px;
     border: 2px solid var(--border);
     border-top-color: var(--cyan);
     border-radius: 50%;
     animation: sum-spin 0.8s linear infinite;
-    margin-right: 8px;
+    margin-right: 6px;
     vertical-align: middle;
   }
   @keyframes sum-spin { to { transform: rotate(360deg); } }
+
   .summary-meta {
-    font-size: 11px;
+    font-size: 10px;
     color: var(--text-dim);
-    margin-top: 8px;
-    padding-top: 6px;
+    margin-top: 6px;
+    padding-top: 4px;
     border-top: 1px solid var(--border);
+  }
+
+  /* Toast Notifications */
+  .toast-container {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    pointer-events: none;
+  }
+  .toast {
+    padding: 8px 14px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+    pointer-events: auto;
+    animation: toastIn 0.3s ease-out, toastOut 0.3s ease-in 2.7s forwards;
+    max-width: 340px;
+  }
+  .toast.success { background: var(--green); color: #fff; }
+  [data-theme="dark"] .toast.success { color: #0d1117; }
+  .toast.error { background: var(--accent); color: #fff; }
+  .toast.info { background: var(--blue); color: #fff; }
+  [data-theme="dark"] .toast.info { color: #0d1117; }
+  .toast.warning { background: var(--orange); color: #fff; }
+  [data-theme="dark"] .toast.warning { color: #0d1117; }
+  @keyframes toastIn { from { opacity: 0; transform: translateX(40px); } to { opacity: 1; transform: translateX(0); } }
+  @keyframes toastOut { from { opacity: 1; } to { opacity: 0; transform: translateY(-10px); } }
+
+  /* Search box */
+  .search-box input {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    width: 120px;
   }
 </style>
 </head>
@@ -600,118 +1027,192 @@
 <!-- Header -->
 <div class="header">
   <h1>SkyDiscover <span>Live Monitor</span></h1>
-  <div style="display:flex; align-items:center; gap:10px;">
-    <button id="theme-toggle" onclick="window.toggleTheme()" style="font-size:11px; padding:4px 12px; background:var(--bg); border:1px solid var(--border); color:var(--text-dim); border-radius:4px; cursor:pointer; font-weight:600; transition:all 0.25s;">Theme: Light</button>
+  <div style="display:flex; align-items:center; gap:8px;">
+    <div class="transport-controls" id="transport-controls">
+      <button class="transport-btn play" id="btn-resume" onclick="window.resumeDiscovery()" disabled title="Resume (Space)">Resume</button>
+      <button class="transport-btn pause" id="btn-pause" onclick="window.pauseDiscovery()" title="Pause (Space)">Pause</button>
+      <button class="transport-btn stop" id="btn-stop" onclick="window.stopDiscovery()" title="Stop">Stop</button>
+      <span class="transport-state running" id="transport-state">Running</span>
+      <span class="forced-parent-indicator" id="forced-parent-indicator" style="display:none;" onclick="window.clearForcedParent()" title="Click to clear"></span>
+    </div>
+    <button id="theme-toggle" onclick="window.toggleTheme()" style="font-size:10px; padding:3px 10px; background:var(--bg); border:1px solid var(--border); color:var(--text-dim); border-radius:4px; cursor:pointer; font-weight:600;">Theme</button>
     <div id="status-badge" class="status-badge disconnected">Disconnected</div>
   </div>
 </div>
 
 <!-- Stats Bar -->
 <div class="stats-bar">
-  <div class="stat">
-    <span class="stat-label">Programs:</span>
-    <span class="stat-value" id="stat-programs">0</span>
-  </div>
-  <div class="stat">
-    <span class="stat-label">Iter:</span>
-    <span class="stat-value" id="stat-iteration">0</span>
-  </div>
-  <div class="stat">
-    <span class="stat-label">Best:</span>
-    <span class="stat-value best" id="stat-best">--</span>
-  </div>
-  <div class="stat">
-    <span class="stat-label">Since best:</span>
-    <span class="stat-value" id="stat-since">--</span>
-  </div>
-  <div class="stat">
-    <span class="stat-label">Elapsed:</span>
-    <span class="stat-value" id="stat-elapsed">--</span>
-  </div>
-  <div style="margin-left:auto; display:flex; align-items:center; gap:8px;">
-    <button id="color-toggle" onclick="window.toggleColoring()" style="font-size:11px; padding:3px 10px; background:var(--bg); border:1px solid var(--border); color:var(--cyan); border-radius:4px; cursor:pointer; font-weight:600;">Color: Score</button>
-    <div class="search-box" style="margin-left:0;">
-      <span class="stat-label">Filter:</span>
-      <input type="text" id="filter-input" placeholder="island, id...">
+  <div class="stat"><span class="stat-label">Programs</span><span class="stat-value" id="stat-programs">0</span></div>
+  <div class="stat"><span class="stat-label">Iteration</span><span class="stat-value" id="stat-iteration">0</span></div>
+  <div class="stat"><span class="stat-label">Best Score</span><span style="display:flex;align-items:center;gap:4px;"><span class="stat-value best" id="stat-best">--</span><svg id="best-sparkline" width="40" height="16" style="flex-shrink:0;"></svg></span></div>
+  <div class="stat"><span class="stat-label">Stagnation</span><span class="stat-value" id="stat-since" title="Iterations since last improvement">--</span></div>
+  <div class="stat"><span class="stat-label">Elapsed</span><span class="stat-value" id="stat-elapsed">--</span></div>
+  <div class="stat"><span class="stat-label">Improve %</span><span class="stat-value" id="stat-hitrate" title="% of children that beat their parent's score">--</span></div>
+  <div style="margin-left:auto; display:flex; align-items:center; gap:6px;">
+    <button id="color-toggle" onclick="window.toggleColoring()" class="plot-toolbar-btn">Color: Score</button>
+    <div class="search-box">
+      <input type="text" id="filter-input" placeholder="Filter...">
     </div>
   </div>
 </div>
 
-<!-- Plot -->
-<div class="plot-container">
-  <div id="scatter-plot"></div>
+<!-- IDE Layout -->
+<div class="ide-layout">
+
+  <!-- Center Stage: Plot + Metrics Chart -->
+  <div class="center-stage">
+    <div class="plot-toolbar">
+      <button class="plot-toolbar-btn" id="lineage-toggle" onclick="window.toggleLineage()" title="Show/hide lineage arrows on selection">Lineage: On</button>
+    </div>
+    <div class="plot-container">
+      <div id="scatter-plot"></div>
+      <canvas id="activity-timeline" height="24" title="HITL events timeline"></canvas>
+    </div>
+  </div>
+
+  <!-- Right Sidebar: Summary | Agent | Steer -->
+  <div class="right-sidebar">
+    <div class="sidebar-tabs">
+      <div class="sidebar-tab active" onclick="window.switchSidebarTab('summary')">Summary</div>
+      <div class="sidebar-tab" id="sidebar-tab-agent" onclick="window.switchSidebarTab('agent')">Q&amp;A</div>
+      <div class="sidebar-tab" onclick="window.switchSidebarTab('steer')">HITL</div>
+    </div>
+
+    <!-- Summary Panel -->
+    <div class="sidebar-panel active" id="sidebar-summary">
+      <div class="summary-panel-header">
+        <button class="summary-refresh-btn" id="summary-refresh-btn" onclick="window.requestSummary()">Refresh</button>
+      </div>
+      <div class="summary-panel-body" id="summary-body">
+        <div style="color:var(--text-dim);font-size:12px;text-align:center;padding:12px;">Waiting for data...</div>
+      </div>
+    </div>
+
+    <!-- Agent Panel -->
+    <div class="sidebar-panel" id="sidebar-agent">
+      <div class="chat-section" id="chat-section">
+        <div class="chat-messages" id="chat-messages">
+          <div class="chat-msg system">Ask anything about the programs, strategies, or what to try next.</div>
+        </div>
+        <div class="chat-input-row">
+          <textarea class="chat-input" id="chat-input" rows="1" placeholder="Why is score stagnating?"></textarea>
+          <button class="chat-send-btn" id="chat-send-btn" onclick="window.sendChatMessage()">Send</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Steer Panel (Human Feedback) -->
+    <div class="sidebar-panel" id="sidebar-steer">
+      <div class="steer-panel-body">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
+          <span style="font-size:12px;font-weight:600;color:var(--text);">Human in the Loop</span>
+          <span class="hf-status-inline inactive" id="hf-status">Inactive</span>
+        </div>
+        <div class="hf-help">
+          Guide the LLM's next iterations. <strong>Append</strong> adds your instructions. <strong>Replace</strong> overrides the prompt.
+        </div>
+        <div class="hf-mode-toggle">
+          <label>Mode:</label>
+          <button class="hf-mode-btn active" id="hf-mode-append" onclick="window.setHfMode('append')">Append</button>
+          <button class="hf-mode-btn" id="hf-mode-replace" onclick="window.setHfMode('replace')">Replace</button>
+          <button class="suggest-btn" id="hf-suggest-btn" onclick="window.suggestFeedback()" title="AI-generated feedback suggestion">AI Suggest</button>
+        </div>
+        <div class="hf-input-row">
+          <textarea class="hf-textarea" id="hf-input" rows="3"
+            placeholder="e.g. Try FFT for frequency analysis. Avoid brute-force."></textarea>
+          <div style="display:flex; flex-direction:column; gap:4px;">
+            <button class="hf-btn send" id="hf-send-btn" onclick="window.sendFeedback()">Send</button>
+            <button class="hf-btn clear" id="hf-clear-btn" onclick="window.clearFeedback()">Clear</button>
+          </div>
+        </div>
+        <div class="hf-current" id="hf-current"></div>
+
+        <!-- System Prompt Viewer -->
+        <div class="collapsible-header" onclick="window.togglePromptViewer()">
+          <span>Current System Prompt</span>
+          <span id="hf-prompt-toggle">&#9654;</span>
+        </div>
+        <div class="collapsible-body" id="hf-prompt-viewer-body">
+          <div class="hf-prompt-body" id="hf-prompt-body">(Prompt will appear after the first iteration runs)</div>
+        </div>
+
+        <!-- Feedback History -->
+        <div class="collapsible-header" onclick="window.toggleHfHistory()">
+          <span>Feedback History (<span id="hf-history-count">0</span>)</span>
+          <span id="hf-history-toggle">&#9654;</span>
+        </div>
+        <div class="collapsible-body" id="hf-history-body">
+          <div style="padding:8px 0;color:var(--text-dim);font-size:12px;text-align:center;">No feedback sent yet.</div>
+        </div>
+
+        <!-- AI Feedback Section -->
+        <div class="ai-feedback-section" id="ai-feedback-section" style="display:none;">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+            <span style="font-size:12px;font-weight:600;color:var(--text);">AI in the Loop</span>
+            <span class="ai-status-inline inactive" id="ai-status">Inactive</span>
+          </div>
+          <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px;line-height:1.5;">
+            Autonomous AI feedback — periodically analyses discovery state and suggests directions.
+          </div>
+          <div class="ai-feedback-text" id="ai-feedback-text"></div>
+          <div class="ai-cost-bar" id="ai-cost-bar">
+            <div class="ai-cost-fill" id="ai-cost-fill" style="width:0%"></div>
+          </div>
+          <div class="ai-cost-label" id="ai-cost-label">Budget: $0.00 / $0.00</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom Drawer -->
+  <div class="bottom-drawer" id="bottom-drawer">
+    <div class="drawer-header" onclick="window.toggleDrawer()">
+      <div class="drawer-tab active" data-drawer="details" onclick="event.stopPropagation(); window.switchDrawerTab('details')">Details</div>
+      <div class="drawer-tab" data-drawer="metrics" onclick="event.stopPropagation(); window.switchDrawerTab('metrics')">Metrics</div>
+      <div class="drawer-tab" data-drawer="diff" onclick="event.stopPropagation(); window.switchDrawerTab('diff')">Code</div>
+      <span class="drawer-toggle" id="drawer-toggle">&#9650;</span>
+    </div>
+
+    <!-- Details pane: Best + Selected side by side -->
+    <div class="drawer-content active" id="drawer-details">
+      <div class="drawer-pane narrow" id="best-panel">
+        <h3 class="panel">Best Program</h3>
+        <div id="best-content" class="empty-state">Waiting for data...</div>
+      </div>
+      <div class="drawer-pane" id="detail-panel">
+        <h3 class="panel">Selected Program</h3>
+        <div id="detail-content" class="empty-state">Click a point on the scatter plot</div>
+      </div>
+    </div>
+
+    <!-- Metrics comparison chart pane -->
+    <div class="drawer-content" id="drawer-metrics">
+      <div class="drawer-pane" style="flex:1;">
+        <h3 class="panel">Metrics Comparison (Selected vs Best vs Parent)</h3>
+        <div id="metrics-chart-container">
+          <div id="metrics-comparison" style="width:100%;height:28vh;min-height:180px;"></div>
+        </div>
+        <div id="metrics-empty" class="empty-state" style="padding:20px;">Select a program to compare metrics.</div>
+      </div>
+    </div>
+
+    <!-- Side-by-side code pane -->
+    <div class="drawer-content" id="drawer-diff">
+      <div class="code-side-pane" id="parent-code-pane">
+        <h4>Parent Code</h4>
+        <div id="parent-code-side" class="code-block" style="color:var(--text-dim);">Select a program to view parent code.</div>
+      </div>
+      <div class="code-side-pane" id="selected-code-pane">
+        <h4>Selected Code</h4>
+        <div id="selected-code-side" class="code-block" style="color:var(--text-dim);">Select a program to view its code.</div>
+      </div>
+    </div>
+  </div>
+
 </div>
 
-<!-- Human Feedback Panel -->
-<div class="hf-panel open" id="hf-panel">
-  <div class="hf-header" onclick="window.toggleHf()">
-    <div class="hf-title">
-      Human Feedback
-      <span class="hf-status inactive" id="hf-status">Inactive</span>
-    </div>
-    <span class="hf-toggle" id="hf-toggle-icon">&#9660;</span>
-  </div>
-  <div class="hf-body">
-    <div class="hf-help">
-      Type feedback to guide the LLM. In <strong>Append</strong> mode your text is added after the system prompt.
-      In <strong>Replace</strong> mode it replaces the entire system prompt.
-    </div>
-    <!-- Mode Toggle -->
-    <div class="hf-mode-toggle">
-      <label>Mode:</label>
-      <button class="hf-mode-btn active" id="hf-mode-append" onclick="window.setHfMode('append')">Append</button>
-      <button class="hf-mode-btn" id="hf-mode-replace" onclick="window.setHfMode('replace')">Replace</button>
-    </div>
-    <div class="hf-input-row">
-      <textarea class="hf-textarea" id="hf-input" rows="3"
-        placeholder="e.g. Focus on hexagonal packing. Try numpy vectorization."></textarea>
-      <div style="display:flex; flex-direction:column; gap:6px;">
-        <button class="hf-btn send" id="hf-send-btn" onclick="window.sendFeedback()">Send</button>
-        <button class="hf-btn clear" id="hf-clear-btn" onclick="window.clearFeedback()">Clear</button>
-      </div>
-    </div>
-    <div class="hf-current" id="hf-current"></div>
-    <!-- System Prompt Viewer -->
-    <div class="hf-prompt-viewer" id="hf-prompt-viewer">
-      <div class="hf-prompt-header" onclick="window.togglePromptViewer()">
-        <span>Current System Prompt</span>
-        <span id="hf-prompt-toggle">&#9654;</span>
-      </div>
-      <div class="hf-prompt-body" id="hf-prompt-body">(Prompt will appear after the first iteration runs)</div>
-    </div>
-    <!-- Feedback History -->
-    <div class="hf-history" id="hf-history">
-      <div class="hf-history-header" onclick="window.toggleHfHistory()">
-        <span>Feedback History (<span id="hf-history-count">0</span>)</span>
-        <span id="hf-history-toggle">&#9654;</span>
-      </div>
-      <div class="hf-history-body" id="hf-history-body">
-        <div style="padding:12px;color:var(--text-dim);font-size:12px;text-align:center;">No feedback sent yet.</div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Bottom Panels -->
-<div class="bottom-panels">
-  <div class="panel" id="best-panel">
-    <h3>Best Program</h3>
-    <div id="best-content" class="empty-state">Waiting for data...</div>
-  </div>
-  <div class="panel" id="detail-panel">
-    <h3>Selected Program</h3>
-    <div id="detail-content" class="empty-state">Click a point on the scatter plot</div>
-  </div>
-  <div class="summary-panel" id="summary-panel">
-    <h3>
-      AI Summary
-      <button class="summary-refresh-btn" id="summary-refresh-btn" onclick="window.requestSummary()">Refresh</button>
-    </h3>
-    <div id="summary-content">
-      <div class="empty-state" style="padding:20px;">Waiting for data...</div>
-    </div>
-  </div>
-</div>
+<!-- Toast Notifications -->
+<div class="toast-container" id="toast-container"></div>
 
 <script>
 (function() {
@@ -726,11 +1227,10 @@
     return (document.documentElement.getAttribute('data-theme') || 'light') === 'dark';
   }
 
-  // Theme-aware color palettes (Plotly can't read CSS vars, so we resolve them)
   function plotColors() {
     const dark = isDarkTheme();
     return {
-      paperBg:   dark ? '#0d1117' : '#f0f2f5',
+      paperBg:   dark ? '#0d1117' : '#ffffff',
       plotBg:    dark ? '#0d1117' : '#ffffff',
       gridColor: dark ? '#21262d' : '#e1e4e8',
       fontColor: dark ? '#e6edf3' : '#1f2328',
@@ -752,23 +1252,22 @@
     const current = html.getAttribute('data-theme') || 'light';
     const next = current === 'dark' ? 'light' : 'dark';
     html.setAttribute('data-theme', next);
-    document.getElementById('theme-toggle').textContent = next === 'dark' ? 'Theme: Dark' : 'Theme: Light';
     rebuildPlot();
     if (selectedId && programMap[selectedId]) {
-      showLineageArrows(programMap[selectedId]);
+      if (lineageEnabled) showLineageArrows(programMap[selectedId]);
       highlightSelected(programMap[selectedId]);
     }
   };
 
   // ─── State ──────────────────────────────────────────────────
-  let programs = [];       // Array of program objects
-  let programMap = {};     // id -> program
+  let programs = [];
+  let programMap = {};
   let bestProgramId = null;
   let stats = {};
   let ws = null;
   let selectedId = null;
-  let bestLine = [];       // [iter, score] pairs for best-so-far line
-  let maxIteration = 0;    // Track highest iteration for best line extension
+  let bestLine = [];
+  let maxIteration = 0;
   let filterText = '';
   let plotInitialized = false;
   let colorByIsland = false;
@@ -779,11 +1278,25 @@
   let hfHistory = [];
   let summaryEnabled = false;
   let summaryGenerating = false;
-  let programSummaryCache = {};  // program_id -> summary text
+  let programSummaryCache = {};
+  let discoveryState = 'running';
+  let hitlEnabled = false;
+  let forcedParentId = null;
+  let forcedParentRemaining = 0;
+  let bestScoreHistory = [];
+  const SPARKLINE_MAX_POINTS = 30;
+  let timelineEvents = [];
+  let stagnationAlerted = false;
+  const STAGNATION_THRESHOLD = 15;
+  let metricsChartProgramId = null;
+  let lineageEnabled = true;
+  let drawerCollapsed = false;
+  let selectedCode = '';
+  let selectedParentCode = '';
 
   // ─── Reverse indexes for lineage ────────────────────────────
-  let childrenIndex = {};       // parent_id -> [child_id, ...]
-  let contextUsedByIndex = {};  // context_id -> [program_id that used it, ...]
+  let childrenIndex = {};
+  let contextUsedByIndex = {};
 
   function rebuildIndexes() {
     childrenIndex = {};
@@ -802,10 +1315,51 @@
     });
   }
 
+  // ─── Sidebar Tab Switching ──────────────────────────────────
+  window.switchSidebarTab = function(tab) {
+    document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.sidebar-panel').forEach(p => p.classList.remove('active'));
+    const tabs = document.querySelectorAll('.sidebar-tab');
+    const panels = { summary: 'sidebar-summary', agent: 'sidebar-agent', steer: 'sidebar-steer' };
+    const tabNames = ['summary', 'agent', 'steer'];
+    const idx = tabNames.indexOf(tab);
+    if (idx >= 0) tabs[idx].classList.add('active');
+    if (panels[tab]) document.getElementById(panels[tab]).classList.add('active');
+    if (tab === 'agent') {
+      var agentTab = document.getElementById('sidebar-tab-agent');
+      if (agentTab) { var b = agentTab.querySelector('.badge'); if (b) b.remove(); }
+    }
+  };
+
+  // ─── Drawer Tab Switching ──────────────────────────────────
+  window.switchDrawerTab = function(tab) {
+    document.querySelectorAll('.drawer-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.drawer-content').forEach(c => c.classList.remove('active'));
+    document.querySelector('.drawer-tab[data-drawer="' + tab + '"]').classList.add('active');
+    document.getElementById('drawer-' + tab).classList.add('active');
+  };
+
+  window.toggleDrawer = function() {
+    const drawer = document.getElementById('bottom-drawer');
+    drawerCollapsed = !drawerCollapsed;
+    drawer.classList.toggle('collapsed', drawerCollapsed);
+    document.getElementById('drawer-toggle').innerHTML = drawerCollapsed ? '&#9660;' : '&#9650;';
+  };
+
+  // ─── Lineage Toggle ────────────────────────────────────────
+  window.toggleLineage = function() {
+    lineageEnabled = !lineageEnabled;
+    document.getElementById('lineage-toggle').textContent = 'Lineage: ' + (lineageEnabled ? 'On' : 'Off');
+    document.getElementById('lineage-toggle').classList.toggle('active', lineageEnabled);
+    if (selectedId && programMap[selectedId]) {
+      if (lineageEnabled) showLineageArrows(programMap[selectedId]);
+      else Plotly.relayout('scatter-plot', { annotations: [] });
+    }
+  };
+
   // ─── WebSocket ─────────────────────────────────────────────
   function connect() {
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    // Same host:port as the HTTP dashboard (single-port server)
     ws = new WebSocket(`${proto}//${location.host}`);
 
     ws.onopen = () => {
@@ -819,15 +1373,10 @@
       setTimeout(connect, 2000);
     };
 
-    ws.onerror = () => {
-      ws.close();
-    };
+    ws.onerror = () => { ws.close(); };
 
     ws.onmessage = (evt) => {
-      try {
-        const msg = JSON.parse(evt.data);
-        handleMessage(msg);
-      } catch(e) {}
+      try { handleMessage(JSON.parse(evt.data)); } catch(e) {}
     };
   }
 
@@ -850,8 +1399,11 @@
         updateStats();
         updateBestPanel();
         updateHfState(msg.human_feedback_enabled, msg.feedback_active, msg.feedback_text, null, msg.human_feedback_mode, msg.human_feedback_current_prompt, msg.human_feedback_history);
+        updateAiFeedbackState(msg);
         summaryModelName = msg.summary_model || '';
         updateSummaryState(msg.summary_enabled, msg.summary_generating, msg.summary_text);
+        hitlEnabled = !!msg.hitl_enabled;
+        if (msg.discovery_state) updateDiscoveryState(msg.discovery_state);
         break;
 
       case 'new_program':
@@ -861,7 +1413,6 @@
         programMap[p.id] = p;
         addToIndexes(p);
         if (p.iteration > maxIteration) maxIteration = p.iteration;
-        // Client-side best tracking: compare scores directly for resilience
         const isBest = msg.is_best ||
           (typeof p.score === 'number' && p.score > (bestProgramId && programMap[bestProgramId] ? (programMap[bestProgramId].score || -Infinity) : -Infinity));
         if (isBest) bestProgramId = p.id;
@@ -869,12 +1420,17 @@
         rebuildBestLine();
         extendPlot(p);
         updateStats();
-        if (isBest) updateBestPanel();
+        if (isBest) {
+          updateBestPanel();
+          if (programs.length > 1) showToast('New best! Score: ' + fmt(p.score) + ' (iter ' + p.iteration + ')', 'success');
+        }
+        updateAiFeedbackState(msg);
         break;
 
       case 'discovery_complete':
         document.getElementById('status-badge').textContent = 'Complete';
         document.getElementById('status-badge').className = 'status-badge connected';
+        showToast('Discovery complete! Final best: ' + fmt(stats.best_score), 'success');
         break;
 
       case 'program_solution':
@@ -896,7 +1452,6 @@
           if (imgEl) { imgEl.src = msg.data_url; imgEl.style.display = 'block'; }
           if (imgLoading) imgLoading.style.display = 'none';
         }
-        // Best panel image
         if (msg.program_id && msg.program_id.startsWith('best_')) {
           const bestImgEl = document.getElementById('best-program-image');
           if (bestImgEl) { bestImgEl.src = msg.data_url; bestImgEl.style.display = 'block'; }
@@ -905,6 +1460,10 @@
 
       case 'feedback_ack':
         updateHfState(true, msg.feedback_active, msg.feedback_text, msg.error, msg.human_feedback_mode);
+        break;
+
+      case 'ai_feedback_state':
+        updateAiFeedbackState(msg);
         break;
 
       case 'human_feedback_mode_ack':
@@ -923,13 +1482,32 @@
         updateSummaryState(msg.summary_enabled, msg.summary_generating, msg.summary_text);
         break;
 
+      case 'chat_response':
+        handleChatResponse(msg);
+        break;
+
+      case 'feedback_suggestion':
+        handleFeedbackSuggestion(msg);
+        break;
+
+      case 'discovery_state':
+        updateDiscoveryState(msg.state);
+        break;
+
+      case 'forced_parent_update':
+        updateForcedParentState(msg.forced_parent_id, msg.forced_parent_remaining || 0);
+        break;
+
+      case 'error':
+        handleServerError(msg);
+        break;
+
       case 'heartbeat':
         break;
     }
   }
 
-  // ─── Best-so-far line (Pareto frontier) ─────────────────────
-  // bestLineX / bestLineY: direct line connecting programs where a new best was achieved.
+  // ─── Best-so-far line ─────────────────────────────────────
   let bestLineX = [];
   let bestLineY = [];
 
@@ -949,32 +1527,26 @@
   }
 
   // ─── Plot ──────────────────────────────────────────────────
-  // Vivid palette that contrasts well in both dark and light themes
   const ISLAND_COLORS = ['#e5484d', '#30a46c', '#e5a000', '#3e63dd', '#8e4ec6', '#12a594', '#e54666', '#0090ff', '#f76b15', '#46a758'];
 
   function rebuildPlot() {
     const tc = plotColors();
-
-    // Split programs into normal and human-feedback-active
     const normalPrograms = programs.filter(p => !p.human_feedback_active);
     const hfPrograms = programs.filter(p => p.human_feedback_active);
-
     const normalScores = normalPrograms.map(p => typeof p.score === 'number' ? p.score : 0);
 
     let normalMarker;
     if (colorByIsland) {
       normalMarker = {
         color: normalPrograms.map(p => ISLAND_COLORS[(p.island || 0) % ISLAND_COLORS.length]),
-        size: 7,
-        opacity: 0.85,
+        size: 7, opacity: 0.85,
         line: { width: 0.5, color: tc.dotOutline },
       };
     } else {
       normalMarker = {
         color: normalScores,
         colorscale: [[0, tc.scoreLow], [0.5, tc.scoreMid], [1, tc.scoreHigh]],
-        size: 7,
-        opacity: 0.85,
+        size: 7, opacity: 0.85,
         line: { width: 0.5, color: tc.dotOutline },
       };
     }
@@ -983,32 +1555,25 @@
       x: normalPrograms.map(p => p.iteration),
       y: normalPrograms.map(p => p.score),
       customdata: normalPrograms.map(p => p.id),
-      mode: 'markers',
-      type: 'scatter',
+      mode: 'markers', type: 'scatter',
       marker: normalMarker,
       text: normalPrograms.map(p => hoverText(p)),
-      hoverinfo: 'text',
-      name: 'Programs',
+      hoverinfo: 'text', name: 'Programs',
     };
 
-    // Human feedback trace: diamond markers with cyan ring
     const hfScores = hfPrograms.map(p => typeof p.score === 'number' ? p.score : 0);
     let hfMarker;
     if (colorByIsland) {
       hfMarker = {
         color: hfPrograms.map(p => ISLAND_COLORS[(p.island || 0) % ISLAND_COLORS.length]),
-        size: 9,
-        symbol: 'diamond',
-        opacity: 0.95,
+        size: 9, symbol: 'diamond', opacity: 0.95,
         line: { width: 2, color: tc.bestLine },
       };
     } else {
       hfMarker = {
         color: hfScores,
         colorscale: [[0, tc.scoreLow], [0.5, tc.scoreMid], [1, tc.scoreHigh]],
-        size: 9,
-        symbol: 'diamond',
-        opacity: 0.95,
+        size: 9, symbol: 'diamond', opacity: 0.95,
         line: { width: 2, color: tc.bestLine },
       };
     }
@@ -1017,93 +1582,103 @@
       x: hfPrograms.map(p => p.iteration),
       y: hfPrograms.map(p => p.score),
       customdata: hfPrograms.map(p => p.id),
-      mode: 'markers',
-      type: 'scatter',
+      mode: 'markers', type: 'scatter',
       marker: hfMarker,
       text: hfPrograms.map(p => hoverText(p) + '\n[Human-Guided]'),
-      hoverinfo: 'text',
-      name: 'Human-Guided',
+      hoverinfo: 'text', name: 'Human-Guided',
     };
 
     const bestTrace = {
-      x: bestLineX,
-      y: bestLineY,
-      mode: 'lines+markers',
-      type: 'scatter',
+      x: bestLineX, y: bestLineY,
+      mode: 'lines+markers', type: 'scatter',
       line: { color: tc.bestLine, width: 3 },
       marker: { color: tc.bestLine, size: 8, symbol: 'star' },
-      name: 'Best so far',
-      hoverinfo: 'y',
+      name: 'Best so far', hoverinfo: 'y',
     };
+
+    const fbShapes = hfHistory.map(entry => ({
+      type: 'line',
+      x0: entry.iteration, x1: entry.iteration,
+      y0: 0, y1: 1, yref: 'paper',
+      line: { color: tc.bestLine, width: 1.5, dash: 'dot' },
+      opacity: 0.5,
+    }));
+
+    const allScores = programs.map(p => p.score).filter(s => typeof s === 'number');
+    const scoreMax = allScores.length ? Math.max(...allScores) : 1;
+    const yMax = Math.min(1.05, scoreMax * 1.15 + 0.05);
+    const allIters = programs.map(p => p.iteration).filter(i => typeof i === 'number');
+    const xMin = allIters.length ? Math.min(...allIters) : 0;
+    const xMax = maxIteration > 0 ? maxIteration + Math.max(1, Math.ceil(maxIteration * 0.05)) : 10;
+    const xPad = Math.max(1, Math.ceil((xMax - xMin) * 0.05));
+    const xStart = Math.max(0, xMin - xPad);
 
     const layout = {
       paper_bgcolor: tc.paperBg,
       plot_bgcolor: tc.plotBg,
       font: { color: tc.fontColor, size: 11 },
-      margin: { t: 30, r: 30, b: 50, l: 60 },
+      margin: { t: 16, r: 16, b: 48, l: 56 },
       xaxis: {
-        title: 'Iteration',
+        title: { text: 'Iteration', standoff: 8 },
         gridcolor: tc.gridColor,
         zerolinecolor: tc.gridColor,
+        range: [xStart, xMax],
+        tick0: xMin,
+        dtick: Math.max(1, Math.ceil((xMax - xStart) / 10)),
+        tickformat: 'd',
+        automargin: true,
       },
       yaxis: {
-        title: 'Score',
+        title: { text: 'Score', standoff: 8 },
         gridcolor: tc.gridColor,
         zerolinecolor: tc.gridColor,
+        range: [0, yMax],
+        tickformat: '.2f',
+        automargin: true,
       },
-      legend: {
-        bgcolor: 'rgba(0,0,0,0)',
-        font: { size: 11, color: tc.fontColor },
-      },
+      legend: { bgcolor: 'rgba(0,0,0,0)', font: { size: 10, color: tc.fontColor }, x: 0, y: 1, xanchor: 'left', yanchor: 'top' },
       hovermode: 'closest',
+      dragmode: 'pan',
+      shapes: fbShapes,
     };
 
     Plotly.newPlot('scatter-plot', [scatter, hfScatter, bestTrace], layout, {
-      responsive: true,
-      displayModeBar: true,
+      responsive: true, displayModeBar: true,
+      scrollZoom: true,
       modeBarButtonsToRemove: ['lasso2d', 'select2d'],
     });
 
     document.getElementById('scatter-plot').on('plotly_click', onPlotClick);
+    document.getElementById('scatter-plot').on('plotly_relayout', renderTimeline);
     plotInitialized = true;
+    renderTimeline();
+    applyFilter();
   }
 
   function extendPlot(p) {
-    if (!plotInitialized) {
-      rebuildPlot();
-      return;
-    }
-
-    // In island coloring mode, rebuild fully since extendTraces can't handle string colors properly
-    if (colorByIsland) {
-      rebuildPlot();
-      return;
-    }
+    if (!plotInitialized) { rebuildPlot(); return; }
+    if (colorByIsland) { rebuildPlot(); return; }
 
     const tc = plotColors();
     const plotDiv = document.getElementById('scatter-plot');
-
-    // Trace 0 = normal programs, Trace 1 = human-feedback programs, Trace 2 = best line
     const traceIdx = p.human_feedback_active ? 1 : 0;
     const hoverLabel = p.human_feedback_active ? hoverText(p) + '\n[Human-Guided]' : hoverText(p);
 
     Plotly.extendTraces(plotDiv, {
-      x: [[p.iteration]],
-      y: [[p.score]],
+      x: [[p.iteration]], y: [[p.score]],
       customdata: [[p.id]],
       'marker.color': [[typeof p.score === 'number' ? p.score : 0]],
       text: [[hoverLabel]],
     }, [traceIdx]);
 
-    // Update best line trace (index 2)
     if (bestLineX.length > 0) {
       Plotly.restyle(plotDiv, {
-        x: [bestLineX],
-        y: [bestLineY],
-        'line.color': tc.bestLine,
-        'marker.color': tc.bestLine,
+        x: [bestLineX], y: [bestLineY],
+        'line.color': tc.bestLine, 'marker.color': tc.bestLine,
       }, [2]);
     }
+    renderTimeline();
+    applyFilter();
   }
 
   function hoverText(p) {
@@ -1119,13 +1694,9 @@
   function onPlotClick(data) {
     if (!data.points || data.points.length === 0) return;
     const pt = data.points[0];
-    if (pt.curveNumber > 1) return; // Only scatter traces (0=normal, 1=human-feedback)
-
-    // Use customdata (program ID) for reliable lookup
+    if (pt.curveNumber > 1) return;
     const pid = pt.customdata;
-    if (pid && programMap[pid]) {
-      selectProgram(programMap[pid]);
-    }
+    if (pid && programMap[pid]) selectProgram(programMap[pid]);
   }
 
   // ─── Lineage Arrows ──────────────────────────────────────
@@ -1134,21 +1705,17 @@
     const tc = plotColors();
     const annotations = [];
 
-    // Parent arrow (red) — bold, high contrast
     if (p.parent_id && programMap[p.parent_id]) {
       const parent = programMap[p.parent_id];
       annotations.push({
         ax: parent.iteration, ay: parent.score,
         x: p.iteration, y: p.score,
         xref: 'x', yref: 'y', axref: 'x', ayref: 'y',
-        showarrow: true,
-        arrowhead: 3, arrowsize: 1.5, arrowwidth: 2.5,
-        arrowcolor: tc.arrowParent,
-        opacity: 0.9,
+        showarrow: true, arrowhead: 3, arrowsize: 1.5, arrowwidth: 2.5,
+        arrowcolor: tc.arrowParent, opacity: 0.9,
       });
     }
 
-    // Context arrows (purple)
     (p.context_ids || []).forEach(cid => {
       if (programMap[cid]) {
         const ctx = programMap[cid];
@@ -1156,15 +1723,12 @@
           ax: ctx.iteration, ay: ctx.score,
           x: p.iteration, y: p.score,
           xref: 'x', yref: 'y', axref: 'x', ayref: 'y',
-          showarrow: true,
-          arrowhead: 3, arrowsize: 1.2, arrowwidth: 2,
-          arrowcolor: tc.arrowContext,
-          opacity: 0.75,
+          showarrow: true, arrowhead: 3, arrowsize: 1.2, arrowwidth: 2,
+          arrowcolor: tc.arrowContext, opacity: 0.75,
         });
       }
     });
 
-    // Children arrows (green) — using index
     (childrenIndex[p.id] || []).forEach(cid => {
       const child = programMap[cid];
       if (child) {
@@ -1172,15 +1736,12 @@
           ax: p.iteration, ay: p.score,
           x: child.iteration, y: child.score,
           xref: 'x', yref: 'y', axref: 'x', ayref: 'y',
-          showarrow: true,
-          arrowhead: 3, arrowsize: 1.2, arrowwidth: 2,
-          arrowcolor: tc.arrowChild,
-          opacity: 0.7,
+          showarrow: true, arrowhead: 3, arrowsize: 1.2, arrowwidth: 2,
+          arrowcolor: tc.arrowChild, opacity: 0.7,
         });
       }
     });
 
-    // "Used as context by" arrows (blue)
     (contextUsedByIndex[p.id] || []).forEach(uid => {
       const user = programMap[uid];
       if (user) {
@@ -1188,10 +1749,8 @@
           ax: p.iteration, ay: p.score,
           x: user.iteration, y: user.score,
           xref: 'x', yref: 'y', axref: 'x', ayref: 'y',
-          showarrow: true,
-          arrowhead: 3, arrowsize: 1, arrowwidth: 1.5,
-          arrowcolor: tc.arrowCtxBy,
-          opacity: 0.6,
+          showarrow: true, arrowhead: 3, arrowsize: 1, arrowwidth: 1.5,
+          arrowcolor: tc.arrowCtxBy, opacity: 0.6,
         });
       }
     });
@@ -1211,7 +1770,7 @@
     if (typeof from !== 'number' || typeof to !== 'number') return '';
     const d = to - from;
     const color = d >= 0 ? 'var(--green)' : 'var(--accent)';
-    return ` <span style="color:${color};font-size:11px">(${d >= 0 ? '+' : ''}${d.toFixed(4)})</span>`;
+    return ` <span style="color:${color};font-size:10px">(${d >= 0 ? '+' : ''}${d.toFixed(4)})</span>`;
   }
 
   window.navigateToProgram = function(id) {
@@ -1223,11 +1782,17 @@
   // ─── Selection ─────────────────────────────────────────────
   function deselectProgram() {
     selectedId = null;
-    // Clear detail panel
+    selectedCode = '';
+    selectedParentCode = '';
     document.getElementById('detail-content').innerHTML = '<div class="empty-state">Click a point on the scatter plot</div>';
-    // Clear arrows
+    document.getElementById('metrics-chart-container').style.display = 'none';
+    var metricsEmpty = document.getElementById('metrics-empty');
+    if (metricsEmpty) metricsEmpty.style.display = 'block';
+    var parentSide = document.getElementById('parent-code-side');
+    var selectedSide = document.getElementById('selected-code-side');
+    if (parentSide) parentSide.textContent = 'Select a program to view parent code.';
+    if (selectedSide) selectedSide.textContent = 'Select a program to view its code.';
     Plotly.relayout('scatter-plot', { annotations: [] });
-    // Reset marker sizes on both normal (0) and human-feedback (1) traces
     if (plotInitialized && programs.length <= 5000) {
       const tc = plotColors();
       const normalProgs = programs.filter(p => !p.human_feedback_active);
@@ -1250,20 +1815,18 @@
   }
 
   function selectProgram(p) {
-    // Toggle: clicking the same program deselects it
-    if (selectedId === p.id) {
-      deselectProgram();
-      return;
-    }
-
+    if (selectedId === p.id) { deselectProgram(); return; }
     selectedId = p.id;
-    showLineageArrows(p);
+    if (lineageEnabled) showLineageArrows(p);
+    else Plotly.relayout('scatter-plot', { annotations: [] });
     highlightSelected(p);
+    rebuildMetricsChart(p);
 
-    // Request full code
+    // Expand drawer if collapsed
+    if (drawerCollapsed) window.toggleDrawer();
+
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'request_program_solution', program_id: p.id }));
-      // Request per-program summary (server will cache)
       if (!programSummaryCache[p.id]) {
         ws.send(JSON.stringify({ type: 'request_program_summary', program_id: p.id }));
       }
@@ -1271,47 +1834,54 @@
 
     const el = document.getElementById('detail-content');
 
-    // Parent (clickable + delta)
     let parentHtml = '<span style="color:var(--text-dim)">None (initial)</span>';
     if (p.parent_id) {
       parentHtml = programTag(p.parent_id, p.parent_score, 'tag-parent') + scoreDelta(p.parent_score, p.score);
     }
 
-    // Children (clickable + deltas)
     const children = childrenIndex[p.id] || [];
     let childrenHtml = '';
     if (children.length > 0) {
-      childrenHtml = children.slice(0, 20).map(cid => {
+      childrenHtml = children.slice(0, 15).map(cid => {
         const child = programMap[cid];
         return programTag(cid, null, 'tag-child') + (child ? scoreDelta(p.score, child.score) : '');
       }).join(' ');
-      if (children.length > 20) childrenHtml += `<span style="color:var(--text-dim);font-size:11px"> +${children.length - 20} more</span>`;
+      if (children.length > 15) childrenHtml += `<span style="color:var(--text-dim);font-size:10px"> +${children.length - 15} more</span>`;
     } else {
       childrenHtml = '<span style="color:var(--text-dim)">None</span>';
     }
 
-    // Human feedback indicator
     let hfIndicator = '';
     if (p.human_feedback_active) {
       hfIndicator = '<div class="detail-row"><span class="detail-label">Feedback:</span><span class="detail-value" style="color:var(--cyan);font-weight:600;">Human-Guided</span></div>';
     }
 
-    // Label type
-    const label = p.label_type || 'unknown';
-    const labelColors = { exploration: 'var(--blue)', exploitation: 'var(--green)', diverge: 'var(--purple)', initial: 'var(--text-dim)' };
-    const labelColor = labelColors[label] || 'var(--orange)';
-
-    // Metrics grid
+    // Color-coded metrics grid
     let metricsHtml = '';
     if (p.metrics && Object.keys(p.metrics).length > 0) {
-      metricsHtml = '<div class="metrics-grid">';
+      const parentProg = p.parent_id ? programMap[p.parent_id] : null;
+      const parentMetrics = (parentProg && parentProg.metrics) ? parentProg.metrics : {};
+      metricsHtml = '<div style="margin-top:8px;font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Metrics</div>';
+      metricsHtml += '<div class="metrics-grid">';
       for (const [k, v] of Object.entries(p.metrics)) {
-        metricsHtml += `<div class="metric-item"><span class="key">${k}:</span> <span class="val">${fmt(v)}</span></div>`;
+        const parentVal = parentMetrics[k];
+        let cls = 'neutral';
+        let deltaHtml = '';
+        if (typeof v === 'number' && typeof parentVal === 'number') {
+          const d = v - parentVal;
+          if (d > 0.0001) {
+            cls = 'improved';
+            deltaHtml = '<span class="metric-delta up">&#9650; +' + d.toFixed(4) + '</span>';
+          } else if (d < -0.0001) {
+            cls = 'regressed';
+            deltaHtml = '<span class="metric-delta down">&#9660; ' + d.toFixed(4) + '</span>';
+          }
+        }
+        metricsHtml += `<div class="metric-item ${cls}"><span class="key">${k}</span><span class="val">${fmt(v)}${deltaHtml}</span></div>`;
       }
       metricsHtml += '</div>';
     }
 
-    // Per-program summary
     let summaryHtml;
     if (programSummaryCache[p.id]) {
       summaryHtml = renderMarkdown(programSummaryCache[p.id]);
@@ -1329,18 +1899,22 @@
       ${hfIndicator}
       <div class="lineage-section detail-row"><span class="detail-label">Parent:</span><span class="detail-value">${parentHtml}</span></div>
       <div class="lineage-section detail-row"><span class="detail-label">Children (${children.length}):</span><span class="detail-value">${childrenHtml}</span></div>
-      ${metricsHtml ? '<div style="margin-top:10px;font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Problem-Specific Metrics</div>' + metricsHtml : ''}
-      <div style="margin-top:8px;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:4px;">
-        <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">What changed</div>
-        <div id="program-summary" class="summary-body" style="font-size:12px;line-height:1.5">${summaryHtml}</div>
+      ${metricsHtml}
+      <div style="margin-top:6px;padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;">
+        <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px;">What changed</div>
+        <div id="program-summary" class="summary-body" style="font-size:11px;line-height:1.5">${summaryHtml}</div>
       </div>
       ${p.image_path ? `
-      <div id="image-viewer" style="margin:12px 0;text-align:center;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;">
-        <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Generated Image</div>
-        <img id="program-image" src="" style="max-width:100%;max-height:300px;border-radius:4px;display:none;" />
-        <div id="image-loading" style="color:var(--text-dim);font-size:12px;padding:20px 0;">Loading image...</div>
+      <div style="margin:8px 0;text-align:center;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:8px;">
+        <img id="program-image" src="" style="max-width:100%;max-height:200px;border-radius:4px;display:none;" />
+        <div id="image-loading" style="color:var(--text-dim);font-size:11px;padding:12px 0;">Loading image...</div>
+      </div>` : ''}
+      <div class="hitl-actions">
+        <button class="hitl-action-btn force-parent" onclick="window.forceParentFromInput('${p.id}')">Force as Parent</button>
+        <span style="font-size:10px;color:var(--text-dim);">for</span>
+        <input type="number" id="force-parent-count" class="hitl-custom-count" value="5" min="1" max="100">
+        <span style="font-size:10px;color:var(--text-dim);">iters</span>
       </div>
-      ` : ''}
       <div class="code-tabs">
         <div class="code-tab active" onclick="showTab('code')">${p.image_path ? 'Prompt' : 'Code'}</div>
         <div class="code-tab" onclick="showTab('parent-code')">${p.image_path ? 'Parent Prompt' : 'Parent Code'}</div>
@@ -1353,42 +1927,30 @@
   function highlightSelected(p) {
     if (!plotInitialized || programs.length > 5000) return;
     const tc = plotColors();
-    // Highlight on normal trace (0)
     const normalProgs = programs.filter(pr => !pr.human_feedback_active);
-    const nSizes = normalProgs.map(pr => pr.id === p.id ? 15 : 7);
-    const nOpacities = normalProgs.map(pr => pr.id === p.id ? 1.0 : 0.85);
-    const nLineWidths = normalProgs.map(pr => pr.id === p.id ? 2.5 : 0.5);
-    const nLineColors = normalProgs.map(pr => pr.id === p.id ? tc.selectedRing : tc.dotOutline);
     Plotly.restyle('scatter-plot', {
-      'marker.size': [nSizes],
-      'marker.opacity': [nOpacities],
-      'marker.line.width': [nLineWidths],
-      'marker.line.color': [nLineColors],
+      'marker.size': [normalProgs.map(pr => pr.id === p.id ? 15 : 7)],
+      'marker.opacity': [normalProgs.map(pr => pr.id === p.id ? 1.0 : 0.85)],
+      'marker.line.width': [normalProgs.map(pr => pr.id === p.id ? 2.5 : 0.5)],
+      'marker.line.color': [normalProgs.map(pr => pr.id === p.id ? tc.selectedRing : tc.dotOutline)],
     }, [0]);
-    // Highlight on human-feedback trace (1)
     const hfProgs = programs.filter(pr => pr.human_feedback_active);
     if (hfProgs.length > 0) {
-      const hSizes = hfProgs.map(pr => pr.id === p.id ? 15 : 9);
-      const hOpacities = hfProgs.map(pr => pr.id === p.id ? 1.0 : 0.95);
-      const hLineWidths = hfProgs.map(pr => pr.id === p.id ? 3 : 2);
-      const hLineColors = hfProgs.map(pr => pr.id === p.id ? tc.selectedRing : tc.bestLine);
       Plotly.restyle('scatter-plot', {
-        'marker.size': [hSizes],
-        'marker.opacity': [hOpacities],
-        'marker.line.width': [hLineWidths],
-        'marker.line.color': [hLineColors],
+        'marker.size': [hfProgs.map(pr => pr.id === p.id ? 15 : 9)],
+        'marker.opacity': [hfProgs.map(pr => pr.id === p.id ? 1.0 : 0.95)],
+        'marker.line.width': [hfProgs.map(pr => pr.id === p.id ? 3 : 2)],
+        'marker.line.color': [hfProgs.map(pr => pr.id === p.id ? tc.selectedRing : tc.bestLine)],
       }, [1]);
     }
   }
 
-  // Global tab switcher
   window.showTab = function(tab) {
     const codeEl = document.getElementById('code-display');
     const parentEl = document.getElementById('parent-code-display');
     if (!codeEl || !parentEl) return;
-
     document.querySelectorAll('.code-tab').forEach(t => t.classList.remove('active'));
-    if (tab === 'solution') {
+    if (tab === 'code') {
       codeEl.style.display = 'block';
       parentEl.style.display = 'none';
       document.querySelectorAll('.code-tab')[0].classList.add('active');
@@ -1399,14 +1961,50 @@
     }
   };
 
+  function findChangedLines(oldLines, newLines) {
+    const changed = new Set();
+    const added = new Set();
+    const maxLen = Math.max(oldLines.length, newLines.length);
+    for (let i = 0; i < maxLen; i++) {
+      if (i >= oldLines.length) { added.add(i); }
+      else if (i >= newLines.length) { changed.add(i); }
+      else if (oldLines[i] !== newLines[i]) { changed.add(i); added.add(i); }
+    }
+    return { changed, added };
+  }
+
+  function renderCodeWithLineNumbers(code, highlightSet, highlightClass) {
+    const lines = code.split('\n');
+    let html = '<div class="code-lined">';
+    for (let i = 0; i < lines.length; i++) {
+      const cls = highlightSet && highlightSet.has(i) ? (' ' + highlightClass) : '';
+      const escaped = lines[i].replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      html += '<div class="code-line' + cls + '"><span class="code-gutter">' + (i + 1) + '</span><span class="code-content">' + escaped + '</span></div>';
+    }
+    html += '</div>';
+    return html;
+  }
+
   function showProgramCode(msg) {
     if (msg.program_id !== selectedId) return;
     const codeEl = document.getElementById('code-display');
     const parentEl = document.getElementById('parent-code-display');
-    if (codeEl) codeEl.textContent = msg.code || '(no code)';
-    if (parentEl) parentEl.textContent = msg.parent_code || '(no parent code)';
+    selectedCode = msg.solution || msg.code || '(no code)';
+    selectedParentCode = msg.parent_solution || msg.parent_code || '(no parent code)';
+    if (codeEl) codeEl.textContent = selectedCode;
+    if (parentEl) parentEl.textContent = selectedParentCode;
 
-    // Request image if this program has one (image evolution mode)
+    // Populate side-by-side code panes with line numbers and diff highlights
+    const parentSide = document.getElementById('parent-code-side');
+    const selectedSide = document.getElementById('selected-code-side');
+    if (parentSide && selectedSide) {
+      const parentLines = selectedParentCode.split('\n');
+      const selectedLines = selectedCode.split('\n');
+      const { changed, added } = findChangedLines(parentLines, selectedLines);
+      parentSide.innerHTML = renderCodeWithLineNumbers(selectedParentCode, changed, 'changed');
+      selectedSide.innerHTML = renderCodeWithLineNumbers(selectedCode, added, 'added');
+    }
+
     const p = programMap[msg.program_id];
     if (p && p.image_path && ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'request_image', program_id: p.id, image_path: p.image_path }));
@@ -1418,8 +2016,181 @@
     document.getElementById('stat-programs').textContent = stats.total_programs || programs.length;
     document.getElementById('stat-iteration').textContent = stats.current_iteration || (programs.length > 0 ? programs[programs.length-1].iteration : 0);
     document.getElementById('stat-best').textContent = fmt(stats.best_score);
-    document.getElementById('stat-since').textContent = stats.iterations_since_improvement != null ? stats.iterations_since_improvement : '--';
+    const sinceEl = document.getElementById('stat-since');
+    const sinceVal = stats.iterations_since_improvement;
+    sinceEl.textContent = sinceVal != null ? sinceVal : '--';
+    if (typeof sinceVal === 'number' && sinceVal >= 20) {
+      sinceEl.style.color = 'var(--accent)';
+      sinceEl.title = 'Stagnating! Consider giving feedback or forcing a different parent.';
+    } else if (typeof sinceVal === 'number' && sinceVal >= 10) {
+      sinceEl.style.color = 'var(--orange)';
+      sinceEl.title = 'No improvement for ' + sinceVal + ' iterations';
+    } else {
+      sinceEl.style.color = '';
+      sinceEl.title = '';
+    }
+    // Stagnation alert for Q&A tab
+    if (typeof sinceVal === 'number' && sinceVal >= STAGNATION_THRESHOLD && !stagnationAlerted) {
+      stagnationAlerted = true;
+      var agentTab = document.getElementById('sidebar-tab-agent');
+      if (agentTab && !agentTab.querySelector('.badge')) {
+        var badge = document.createElement('span');
+        badge.className = 'badge';
+        agentTab.appendChild(badge);
+      }
+      addChatMessage('system', 'Stagnation detected (' + sinceVal + ' iterations without improvement). Consider changing approach, giving feedback, or forcing a different parent.');
+    }
+    if (typeof sinceVal === 'number' && sinceVal < STAGNATION_THRESHOLD && stagnationAlerted) {
+      stagnationAlerted = false;
+      var agentTab2 = document.getElementById('sidebar-tab-agent');
+      if (agentTab2) { var b = agentTab2.querySelector('.badge'); if (b) b.remove(); }
+    }
     document.getElementById('stat-elapsed').textContent = formatElapsed(stats.elapsed_seconds);
+    let improvements = 0, withParent = 0;
+    programs.forEach(function(p) {
+      if (typeof p.parent_score === 'number' && typeof p.score === 'number') {
+        withParent++;
+        if (p.score > p.parent_score) improvements++;
+      }
+    });
+    const hrEl = document.getElementById('stat-hitrate');
+    if (withParent > 0) {
+      const rate = Math.round(improvements / withParent * 100);
+      hrEl.textContent = rate + '%';
+      hrEl.style.color = rate >= 20 ? 'var(--green)' : rate >= 5 ? 'var(--orange)' : 'var(--accent)';
+    } else {
+      hrEl.textContent = '--';
+      hrEl.style.color = '';
+    }
+    updateSparkline();
+  }
+
+  function updateSparkline() {
+    const score = stats.best_score;
+    if (typeof score !== 'number') return;
+    bestScoreHistory.push(score);
+    if (bestScoreHistory.length > SPARKLINE_MAX_POINTS) bestScoreHistory.shift();
+    const svg = document.getElementById('best-sparkline');
+    if (!svg || bestScoreHistory.length < 2) return;
+    const w = 40, h = 16, pad = 1;
+    const min = Math.min(...bestScoreHistory);
+    const max = Math.max(...bestScoreHistory);
+    const range = max - min || 1;
+    const points = bestScoreHistory.map(function(v, i) {
+      const x = pad + (i / (bestScoreHistory.length - 1)) * (w - 2 * pad);
+      const y = h - pad - ((v - min) / range) * (h - 2 * pad);
+      return x.toFixed(1) + ',' + y.toFixed(1);
+    }).join(' ');
+    svg.innerHTML = '<polyline points="' + points + '" fill="none" stroke="var(--green)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>';
+  }
+
+  // ─── Activity Timeline ──────────────────────────────────────
+  function renderTimeline() {
+    var canvas = document.getElementById('activity-timeline');
+    if (!canvas) return;
+    var rect = canvas.getBoundingClientRect();
+    if (rect.width === 0) return;
+    var ctx = canvas.getContext('2d');
+    var dpr = window.devicePixelRatio || 1;
+    canvas.width = rect.width * dpr;
+    canvas.height = 24 * dpr;
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, rect.width, 24);
+
+    var plotDiv = document.getElementById('scatter-plot');
+    if (!plotDiv) return;
+    var fl = plotDiv._fullLayout;
+    var xaxis = fl && fl.xaxis;
+    var xMin = xaxis ? xaxis.range[0] : 0;
+    var xMax = xaxis ? xaxis.range[1] : (maxIteration || 1);
+    var xRange = xMax - xMin || 1;
+
+    // Read Plotly margins dynamically, fallback to defaults
+    var mL = (fl && fl.margin) ? fl.margin.l : 50;
+    var mR = (fl && fl.margin) ? fl.margin.r : 10;
+    var plotW = rect.width - mL - mR;
+
+    var style = getComputedStyle(document.documentElement);
+    var colorMap = {
+      feedback: style.getPropertyValue('--blue').trim() || '#58a6ff',
+      force_parent: style.getPropertyValue('--orange').trim() || '#d29922',
+      paused: style.getPropertyValue('--text-dim').trim() || '#8b949e',
+      running: style.getPropertyValue('--green').trim() || '#3fb950',
+    };
+
+    // Baseline
+    ctx.strokeStyle = style.getPropertyValue('--border').trim() || '#30363d';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(mL, 12);
+    ctx.lineTo(mL + plotW, 12);
+    ctx.stroke();
+
+    // Event dots
+    timelineEvents.forEach(function(evt) {
+      var x = mL + ((evt.iteration - xMin) / xRange) * plotW;
+      if (x < mL || x > mL + plotW) return;
+      ctx.fillStyle = colorMap[evt.type] || colorMap.feedback;
+      ctx.beginPath();
+      ctx.arc(x, 12, 4, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
+
+  // Timeline tooltip on hover
+  (function() {
+    var canvas = document.getElementById('activity-timeline');
+    if (!canvas) return;
+    canvas.addEventListener('mousemove', function(e) {
+      var rect = canvas.getBoundingClientRect();
+      var mx = e.clientX - rect.left;
+      var plotDiv = document.getElementById('scatter-plot');
+      if (!plotDiv) return;
+      var fl = plotDiv._fullLayout;
+      var xaxis = fl && fl.xaxis;
+      var xMin = xaxis ? xaxis.range[0] : 0;
+      var xMax = xaxis ? xaxis.range[1] : (maxIteration || 1);
+      var xRange = xMax - xMin || 1;
+      var mL = (fl && fl.margin) ? fl.margin.l : 50;
+      var mR = (fl && fl.margin) ? fl.margin.r : 10;
+      var plotW = rect.width - mL - mR;
+      var tip = '';
+      for (var i = 0; i < timelineEvents.length; i++) {
+        var evt = timelineEvents[i];
+        var x = mL + ((evt.iteration - xMin) / xRange) * plotW;
+        if (Math.abs(x - mx) < 6) {
+          var labels = { feedback: 'Feedback', force_parent: 'Force Parent', paused: 'Paused', running: 'Resumed' };
+          tip = (labels[evt.type] || evt.type) + ' @ iter ' + evt.iteration;
+          break;
+        }
+      }
+      canvas.title = tip;
+    });
+  })();
+
+  // ─── Filter ────────────────────────────────────────────────
+  function applyFilter() {
+    if (!plotInitialized) return;
+    var plotDiv = document.getElementById('scatter-plot');
+    if (!plotDiv) return;
+    var normalProgs = programs.filter(function(p) { return !p.human_feedback_active; });
+    var hfProgs = programs.filter(function(p) { return p.human_feedback_active; });
+
+    function matches(p) {
+      if (!filterText) return true;
+      if (p.id.toLowerCase().indexOf(filterText) >= 0) return true;
+      if (p.island != null && String(p.island).toLowerCase().indexOf(filterText) >= 0) return true;
+      if (typeof p.score === 'number' && p.score.toFixed(4).indexOf(filterText) >= 0) return true;
+      return false;
+    }
+
+    var normalOpacity = normalProgs.map(function(p) { return matches(p) ? 0.85 : 0.05; });
+    var hfOpacity = hfProgs.map(function(p) { return matches(p) ? 0.95 : 0.05; });
+
+    Plotly.restyle(plotDiv, { 'marker.opacity': [normalOpacity] }, [0]);
+    if (hfProgs.length > 0) {
+      Plotly.restyle(plotDiv, { 'marker.opacity': [hfOpacity] }, [1]);
+    }
   }
 
   function updateBestPanel() {
@@ -1431,26 +2202,25 @@
     const p = programMap[bestProgramId];
     let bestMetricsHtml = '';
     if (p.metrics && Object.keys(p.metrics).length > 0) {
-      bestMetricsHtml = '<div style="margin-top:10px;font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Problem-Specific Metrics</div>';
+      bestMetricsHtml = '<div style="margin-top:8px;font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Metrics</div>';
       bestMetricsHtml += '<div class="metrics-grid">';
       for (const [k, v] of Object.entries(p.metrics)) {
-        bestMetricsHtml += `<div class="metric-item"><span class="key">${k}:</span> <span class="val">${fmt(v)}</span></div>`;
+        bestMetricsHtml += `<div class="metric-item neutral"><span class="key">${k}</span><span class="val">${fmt(v)}</span></div>`;
       }
       bestMetricsHtml += '</div>';
     }
     el.innerHTML = `
-      <div style="cursor:pointer; text-align:left;" onclick="window.navigateToProgram('${p.id}')" title="Click to select in detail panel">
+      <div style="cursor:pointer;" onclick="window.navigateToProgram('${p.id}')" title="Click to select">
         <div class="detail-row"><span class="detail-label">Score:</span><span class="detail-value score"><code>${fmt(p.score)}</code></span></div>
         <div class="detail-row"><span class="detail-label">Iteration:</span><span class="detail-value"><code>${p.iteration}</code></span></div>
         <div class="detail-row"><span class="detail-label">Generation:</span><span class="detail-value"><code>${p.generation || 0}</code></span></div>
         ${p.island != null ? `<div class="detail-row"><span class="detail-label">Island:</span><span class="detail-value"><code>${p.island}</code></span></div>` : ''}
         ${bestMetricsHtml}
-        ${p.image_path ? `<div id="best-image-container" style="margin-top:10px;text-align:center;">
-          <img id="best-program-image" src="" style="max-width:100%;max-height:200px;border-radius:4px;display:none;" />
+        ${p.image_path ? `<div style="margin-top:8px;text-align:center;">
+          <img id="best-program-image" src="" style="max-width:100%;max-height:150px;border-radius:4px;display:none;" />
         </div>` : ''}
       </div>
     `;
-    // Request best image if available
     if (p.image_path && ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'request_image', program_id: 'best_' + p.id, image_path: p.image_path }));
     }
@@ -1477,11 +2247,10 @@
     return div.innerHTML;
   }
 
-  // ─── Human Feedback (Human Feedback) ────────────────────────────────
+  // ─── Human Feedback ────────────────────────────────────────
   function updateHfState(enabled, active, text, error, mode, currentPrompt, history) {
     hfEnabled = !!enabled;
     hfActive = !!active;
-    const panel = document.getElementById('hf-panel');
     const status = document.getElementById('hf-status');
     const sendBtn = document.getElementById('hf-send-btn');
     const clearBtn = document.getElementById('hf-clear-btn');
@@ -1489,13 +2258,12 @@
     const current = document.getElementById('hf-current');
 
     if (!hfEnabled) {
-      status.className = 'hf-status disabled';
+      status.className = 'hf-status-inline disabled';
       status.textContent = 'Not Enabled';
-      panel.classList.remove('active');
       sendBtn.disabled = true;
       clearBtn.disabled = true;
       input.disabled = true;
-      input.placeholder = 'Human feedback not enabled. Set human_feedback_enabled: true in config.';
+      input.placeholder = 'Human feedback not enabled in config.';
       current.classList.remove('visible');
       return;
     }
@@ -1505,39 +2273,83 @@
     input.placeholder = 'e.g. Focus on hexagonal packing. Try numpy vectorization.';
 
     if (hfActive && text) {
-      status.className = 'hf-status active';
+      status.className = 'hf-status-inline active';
       status.textContent = 'Active';
-      panel.classList.add('active');
       clearBtn.disabled = false;
       current.textContent = text;
       current.classList.add('visible');
     } else {
-      status.className = 'hf-status inactive';
+      status.className = 'hf-status-inline inactive';
       status.textContent = 'Inactive';
-      panel.classList.remove('active');
       clearBtn.disabled = true;
       current.classList.remove('visible');
     }
 
     if (error) {
-      status.className = 'hf-status disabled';
+      status.className = 'hf-status-inline disabled';
       status.textContent = error;
     }
 
-    // Update mode UI
     if (mode) updateHfModeUI(mode);
-
-    // Update prompt viewer
     if (currentPrompt !== undefined) updatePromptViewer(currentPrompt);
-
-    // Update history
     if (history !== undefined) updateHfHistory(history);
   }
 
-  // ─── Human Feedback Mode Toggle ──────────────────────────────────────────
+  // ─── AI Feedback State ─────────────────────────────────────
+  function updateAiFeedbackState(msg) {
+    var section = document.getElementById('ai-feedback-section');
+    var status = document.getElementById('ai-status');
+    var textEl = document.getElementById('ai-feedback-text');
+    var costFill = document.getElementById('ai-cost-fill');
+    var costLabel = document.getElementById('ai-cost-label');
+
+    if (!section || !msg) return;
+
+    var enabled = msg.ai_feedback_enabled;
+    if (!enabled) {
+      section.style.display = 'none';
+      return;
+    }
+    section.style.display = 'block';
+
+    var active = msg.ai_feedback_active;
+    var text = msg.ai_feedback_text || '';
+    var costSpent = msg.ai_cost_spent || 0;
+    var budgetMax = msg.ai_budget_max || 0;
+    var exhausted = msg.ai_budget_exhausted || false;
+
+    if (exhausted) {
+      status.className = 'ai-status-inline disabled';
+      status.textContent = 'Budget Exhausted';
+    } else if (active && text) {
+      status.className = 'ai-status-inline active';
+      status.textContent = 'Active';
+    } else {
+      status.className = 'ai-status-inline inactive';
+      status.textContent = 'Monitoring';
+    }
+
+    if (active && text) {
+      textEl.textContent = text;
+      textEl.classList.add('visible');
+    } else {
+      textEl.classList.remove('visible');
+    }
+
+    if (budgetMax > 0) {
+      var pct = Math.min(100, (costSpent / budgetMax) * 100);
+      costFill.style.width = pct + '%';
+      costFill.className = 'ai-cost-fill' + (exhausted ? ' exhausted' : '');
+      costLabel.textContent = 'Budget: $' + costSpent.toFixed(2) + ' / $' + budgetMax.toFixed(2);
+    } else {
+      costLabel.textContent = '';
+    }
+  }
+
   window.setHfMode = function(mode) {
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    if (!ws || ws.readyState !== WebSocket.OPEN) { showToast('Not connected', 'error'); return; }
     ws.send(JSON.stringify({ type: 'set_human_feedback_mode', mode: mode }));
+    updateHfModeUI(mode);
   };
 
   function updateHfModeUI(mode) {
@@ -1548,14 +2360,12 @@
     if (replaceBtn) replaceBtn.classList.toggle('active', mode === 'replace');
   }
 
-  // ─── System Prompt Viewer ─────────────────────────────────────
   window.togglePromptViewer = function() {
-    const viewer = document.getElementById('hf-prompt-viewer');
+    const body = document.getElementById('hf-prompt-viewer-body');
     const icon = document.getElementById('hf-prompt-toggle');
-    viewer.classList.toggle('open');
-    icon.innerHTML = viewer.classList.contains('open') ? '&#9660;' : '&#9654;';
-    // Request latest prompt when opening
-    if (viewer.classList.contains('open') && ws && ws.readyState === WebSocket.OPEN) {
+    body.classList.toggle('open');
+    icon.innerHTML = body.classList.contains('open') ? '&#9660;' : '&#9654;';
+    if (body.classList.contains('open') && ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'request_system_prompt' }));
     }
   };
@@ -1563,36 +2373,38 @@
   function updatePromptViewer(promptText) {
     hfCurrentPrompt = promptText;
     const body = document.getElementById('hf-prompt-body');
-    if (body) {
-      body.textContent = promptText || '(Prompt will appear after the first iteration runs)';
-    }
+    if (body) body.textContent = promptText || '(Prompt will appear after the first iteration runs)';
   }
 
-  // ─── Human Feedback Feedback History ─────────────────────────────────────
   window.toggleHfHistory = function() {
-    const el = document.getElementById('hf-history');
+    const body = document.getElementById('hf-history-body');
     const icon = document.getElementById('hf-history-toggle');
-    el.classList.toggle('open');
-    icon.innerHTML = el.classList.contains('open') ? '&#9660;' : '&#9654;';
-    // Refresh history when opening
-    if (el.classList.contains('open') && ws && ws.readyState === WebSocket.OPEN) {
+    body.classList.toggle('open');
+    icon.innerHTML = body.classList.contains('open') ? '&#9660;' : '&#9654;';
+    if (body.classList.contains('open') && ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'request_human_feedback_history' }));
     }
   };
 
   function updateHfHistory(history) {
     hfHistory = history || [];
+    // Sync feedback events to timeline
+    var knownFeedbackIters = {};
+    timelineEvents.forEach(function(e) { if (e.type === 'feedback') knownFeedbackIters[e.iteration] = true; });
+    hfHistory.forEach(function(entry) {
+      if (entry.iteration != null && !knownFeedbackIters[entry.iteration]) {
+        timelineEvents.push({ iteration: entry.iteration, type: 'feedback' });
+      }
+    });
+    renderTimeline();
     const countEl = document.getElementById('hf-history-count');
     const bodyEl = document.getElementById('hf-history-body');
     if (countEl) countEl.textContent = hfHistory.length;
-
     if (!bodyEl) return;
     if (hfHistory.length === 0) {
-      bodyEl.innerHTML = '<div style="padding:12px;color:var(--text-dim);font-size:12px;text-align:center;">No feedback sent yet.</div>';
+      bodyEl.innerHTML = '<div style="padding:8px 0;color:var(--text-dim);font-size:12px;text-align:center;">No feedback sent yet.</div>';
       return;
     }
-
-    // Render entries newest-first
     let html = '';
     for (let i = hfHistory.length - 1; i >= 0; i--) {
       const entry = hfHistory[i];
@@ -1611,28 +2423,45 @@
     bodyEl.innerHTML = html;
   }
 
-  // ─── Human Feedback Controls ─────────────────────────────────────────────
-  window.toggleHf = function() {
-    const panel = document.getElementById('hf-panel');
-    const icon = document.getElementById('hf-toggle-icon');
-    panel.classList.toggle('open');
-    icon.innerHTML = panel.classList.contains('open') ? '&#9660;' : '&#9654;';
-  };
+  window.toggleHf = function() {};
 
   window.sendFeedback = function() {
     const input = document.getElementById('hf-input');
     const text = input.value.trim();
-    if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
+    if (!text) { showToast('Enter feedback text first', 'warning'); return; }
+    if (!ws || ws.readyState !== WebSocket.OPEN) { showToast('Not connected', 'error'); return; }
     ws.send(JSON.stringify({ type: 'set_feedback', text: text }));
     input.value = '';
+    showToast('Feedback sent (' + text.length + ' chars)', 'success');
   };
 
   window.clearFeedback = function() {
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    if (!ws || ws.readyState !== WebSocket.OPEN) { showToast('Not connected', 'error'); return; }
     ws.send(JSON.stringify({ type: 'clear_feedback' }));
+    showToast('Feedback cleared', 'info');
   };
 
-  // Allow Ctrl+Enter to send feedback
+  window.suggestFeedback = function() {
+    if (!ws || ws.readyState !== WebSocket.OPEN) { showToast('Not connected', 'error'); return; }
+    var btn = document.getElementById('hf-suggest-btn');
+    btn.disabled = true;
+    btn.textContent = 'Thinking...';
+    ws.send(JSON.stringify({ type: 'suggest_feedback' }));
+  };
+
+  function handleFeedbackSuggestion(msg) {
+    var btn = document.getElementById('hf-suggest-btn');
+    btn.disabled = false;
+    btn.textContent = 'AI Suggest';
+    if (msg.error) { showToast(msg.error, 'error'); return; }
+    var input = document.getElementById('hf-input');
+    input.value = msg.text || '';
+    input.focus();
+    showToast('AI suggestion loaded', 'success');
+    // Auto-switch to steer tab
+    window.switchSidebarTab('steer');
+  }
+
   document.getElementById('hf-input').addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
@@ -1641,89 +2470,148 @@
   });
 
   // ─── AI Summary ──────────────────────────────────────────────
-  // Lightweight markdown→HTML for LLM summary output
   function renderMarkdown(md) {
     const lines = md.split('\n');
     let html = '';
     let inList = false;
-
     for (let i = 0; i < lines.length; i++) {
       let line = lines[i];
-
-      // ## Header
       if (/^##\s+(.+)/.test(line)) {
         if (inList) { html += '</ul>'; inList = false; }
         html += '<h2>' + escapeHtml(line.replace(/^##\s+/, '')) + '</h2>';
         continue;
       }
-
-      // Bullet: - text or * text
       if (/^\s*[-*]\s+(.+)/.test(line)) {
         if (!inList) { html += '<ul>'; inList = true; }
-        const bullet = line.replace(/^\s*[-*]\s+/, '');
-        html += '<li>' + inlineMarkdown(bullet) + '</li>';
+        html += '<li>' + inlineMarkdown(line.replace(/^\s*[-*]\s+/, '')) + '</li>';
         continue;
       }
-
-      // Anything else: paragraph
       if (inList) { html += '</ul>'; inList = false; }
       const trimmed = line.trim();
-      if (trimmed) {
-        html += '<p>' + inlineMarkdown(trimmed) + '</p>';
-      }
+      if (trimmed) html += '<p>' + inlineMarkdown(trimmed) + '</p>';
     }
     if (inList) html += '</ul>';
     return html;
   }
 
-  // Inline markdown: **bold**, `code`, escaping
   function inlineMarkdown(text) {
     let s = escapeHtml(text);
-    // **bold**
     s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-    // `code`
     s = s.replace(/`(.+?)`/g, '<code>$1</code>');
     return s;
   }
 
+  // ─── AI Chat ──────────────────────────────────────────────
+  let chatWaiting = false;
+  let summaryModelName = '';
+
+  function addChatMessage(role, content) {
+    const container = document.getElementById('chat-messages');
+    if (role === 'system') {
+      const msg = document.createElement('div');
+      msg.className = 'chat-msg system';
+      msg.textContent = content;
+      container.appendChild(msg);
+    } else {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'chat-msg-wrapper ' + (role === 'user' ? 'user-wrapper' : '');
+      const avatar = document.createElement('div');
+      avatar.className = 'chat-avatar ' + (role === 'user' ? 'user-avatar' : 'ai-avatar');
+      avatar.textContent = role === 'user' ? 'U' : 'AI';
+      const msg = document.createElement('div');
+      msg.className = 'chat-msg ' + role;
+      if (role === 'ai') {
+        msg.innerHTML = '<div class="summary-body">' + renderMarkdown(content) + '</div>';
+      } else {
+        msg.textContent = content;
+      }
+      wrapper.appendChild(avatar);
+      wrapper.appendChild(msg);
+      container.appendChild(wrapper);
+    }
+    container.scrollTop = container.scrollHeight;
+  }
+
+  function addChatSpinner() {
+    const container = document.getElementById('chat-messages');
+    const wrapper = document.createElement('div');
+    wrapper.className = 'chat-msg-wrapper';
+    wrapper.id = 'chat-spinner';
+    const avatar = document.createElement('div');
+    avatar.className = 'chat-avatar ai-avatar';
+    avatar.textContent = 'AI';
+    const msg = document.createElement('div');
+    msg.className = 'chat-msg ai';
+    msg.innerHTML = '<span class="summary-spinner"></span> Thinking...';
+    wrapper.appendChild(avatar);
+    wrapper.appendChild(msg);
+    container.appendChild(wrapper);
+    container.scrollTop = container.scrollHeight;
+  }
+
+  function removeChatSpinner() {
+    const el = document.getElementById('chat-spinner');
+    if (el) el.remove();
+  }
+
+  window.sendChatMessage = function() {
+    const input = document.getElementById('chat-input');
+    const text = input.value.trim();
+    if (!text) return;
+    if (!ws || ws.readyState !== WebSocket.OPEN) { showToast('Not connected', 'error'); return; }
+    if (chatWaiting) { showToast('Waiting for response...', 'warning'); return; }
+    addChatMessage('user', text);
+    input.value = '';
+    input.style.height = 'auto';
+    chatWaiting = true;
+    document.getElementById('chat-send-btn').disabled = true;
+    addChatSpinner();
+    ws.send(JSON.stringify({ type: 'chat_message', text: text, selected_program_id: selectedId || null }));
+  };
+
+  window.requestSummary = function() {
+    if (!ws || ws.readyState !== WebSocket.OPEN) { showToast('Not connected', 'error'); return; }
+    ws.send(JSON.stringify({ type: 'request_summary' }));
+  };
+
   function updateSummaryState(enabled, generating, text) {
     summaryEnabled = !!enabled;
     summaryGenerating = !!generating;
-    const content = document.getElementById('summary-content');
+    const body = document.getElementById('summary-body');
     const refreshBtn = document.getElementById('summary-refresh-btn');
-
-    refreshBtn.disabled = summaryGenerating;
-
-    if (!summaryEnabled && !text) {
-      content.innerHTML = '<div class="empty-state" style="padding:20px;">AI summary not configured.</div>';
+    if (generating) {
       refreshBtn.disabled = true;
+      body.innerHTML = '<div style="color:var(--text-dim);font-size:12px;padding:8px;"><span class="summary-spinner"></span> Generating summary...</div>';
       return;
     }
-
-    if (summaryGenerating) {
-      let spinHtml = '<div style="padding:12px;color:var(--text-dim);font-size:13px;"><span class="summary-spinner"></span>Generating summary...</div>';
-      if (text) {
-        spinHtml += '<div class="summary-body" style="opacity:0.5">' + renderMarkdown(text) + '</div>';
-      }
-      content.innerHTML = spinHtml;
-      return;
-    }
-
+    refreshBtn.disabled = false;
     if (text) {
-      let html = '<div class="summary-body">' + renderMarkdown(text) + '</div>';
-      html += '<div class="summary-meta">' + escapeHtml(summaryModelName || 'AI') + ' | ' + programs.length + ' programs</div>';
-      content.innerHTML = html;
-    } else {
-      content.innerHTML = '<div class="empty-state" style="padding:20px;">Click Refresh to generate a summary.</div>';
+      body.innerHTML = '<div class="summary-body">' + renderMarkdown(text) + '</div>';
+    } else if (!enabled) {
+      body.innerHTML = '<div style="color:var(--text-dim);font-size:12px;text-align:center;padding:12px;">AI summary not configured.</div>';
+      refreshBtn.disabled = true;
     }
   }
 
-  let summaryModelName = '';
+  function handleChatResponse(msg) {
+    removeChatSpinner();
+    chatWaiting = false;
+    document.getElementById('chat-send-btn').disabled = false;
+    if (msg.error) addChatMessage('system', msg.error);
+    else addChatMessage('ai', msg.text || '(empty response)');
+  }
 
-  window.requestSummary = function() {
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    ws.send(JSON.stringify({ type: 'request_summary' }));
-  };
+  document.getElementById('chat-input').addEventListener('input', function() {
+    this.style.height = 'auto';
+    this.style.height = Math.min(this.scrollHeight, 80) + 'px';
+  });
+
+  document.getElementById('chat-input').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      window.sendChatMessage();
+    }
+  });
 
   // ─── Island coloring toggle ──────────────────────────────────
   window.toggleColoring = function() {
@@ -1733,9 +2621,219 @@
   };
 
   // ─── Filter ────────────────────────────────────────────────
+  let filterDebounceTimer = null;
   document.getElementById('filter-input').addEventListener('input', (e) => {
     filterText = e.target.value.toLowerCase().trim();
+    clearTimeout(filterDebounceTimer);
+    filterDebounceTimer = setTimeout(applyFilter, 200);
   });
+
+  // ─── Toast Notifications ──────────────────────────────────────
+  function showToast(message, type) {
+    type = type || 'info';
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    toast.className = 'toast ' + type;
+    toast.textContent = message;
+    container.appendChild(toast);
+    setTimeout(function() { toast.remove(); }, 3000);
+  }
+
+  // ─── HITL Transport Controls ─────────────────────────────────
+  window.pauseDiscovery = function() {
+    if (!ws || ws.readyState !== WebSocket.OPEN) { showToast('Not connected', 'error'); return; }
+    ws.send(JSON.stringify({ type: 'pause_discovery' }));
+    showToast('Pausing discovery...', 'warning');
+  };
+
+  window.resumeDiscovery = function() {
+    if (!ws || ws.readyState !== WebSocket.OPEN) { showToast('Not connected', 'error'); return; }
+    ws.send(JSON.stringify({ type: 'resume_discovery' }));
+    showToast('Resuming discovery...', 'success');
+  };
+
+  window.stopDiscovery = function() {
+    if (!ws || ws.readyState !== WebSocket.OPEN) { showToast('Not connected', 'error'); return; }
+    if (!confirm('Stop the discovery process? This will save a checkpoint and exit.')) return;
+    ws.send(JSON.stringify({ type: 'stop_discovery' }));
+    showToast('Stopping discovery...', 'error');
+  };
+
+  function updateDiscoveryState(state) {
+    if (state === 'paused' || state === 'running') {
+      var iter = stats.current_iteration || maxIteration;
+      var last = timelineEvents.length > 0 ? timelineEvents[timelineEvents.length - 1] : null;
+      if (iter > 0 && !(last && last.type === state && last.iteration === iter)) {
+        timelineEvents.push({ iteration: iter, type: state });
+        renderTimeline();
+      }
+    }
+    discoveryState = state;
+    const stateEl = document.getElementById('transport-state');
+    const pauseBtn = document.getElementById('btn-pause');
+    const resumeBtn = document.getElementById('btn-resume');
+    const stopBtn = document.getElementById('btn-stop');
+    stateEl.className = 'transport-state ' + state;
+    stateEl.textContent = state.charAt(0).toUpperCase() + state.slice(1);
+    if (state === 'running') {
+      pauseBtn.disabled = false; resumeBtn.disabled = true; stopBtn.disabled = false;
+    } else if (state === 'paused') {
+      pauseBtn.disabled = true; resumeBtn.disabled = false; stopBtn.disabled = false;
+    } else if (state === 'stopped') {
+      pauseBtn.disabled = true; resumeBtn.disabled = true; stopBtn.disabled = true;
+    }
+  }
+
+  // ─── HITL Force Parent ─────────────────────────────────────
+  window.forceParent = function(programId, numIterations) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) { showToast('Not connected', 'error'); return; }
+    const n = numIterations || 1;
+    ws.send(JSON.stringify({ type: 'force_parent', program_id: programId, num_iterations: n }));
+    showToast('Forced parent: ' + programId.substring(0, 8) + '... for ' + n + ' iter(s)', 'success');
+  };
+
+  window.forceParentFromInput = function(programId) {
+    var input = document.getElementById('force-parent-count');
+    var n = input ? parseInt(input.value, 10) : 5;
+    if (isNaN(n) || n < 1) n = 1;
+    if (n > 100) n = 100;
+    window.forceParent(programId, n);
+  };
+
+  window.clearForcedParent = function() {
+    if (!ws || ws.readyState !== WebSocket.OPEN) { showToast('Not connected', 'error'); return; }
+    ws.send(JSON.stringify({ type: 'clear_forced_parent' }));
+    showToast('Forced parent cleared', 'info');
+  };
+
+  let lastForcedParentPush = null;
+  function updateForcedParentState(parentId, remaining) {
+    if (parentId && remaining > 0) {
+      var iter = stats.current_iteration || maxIteration;
+      var key = parentId + ':' + iter;
+      if (iter > 0 && key !== lastForcedParentPush) {
+        lastForcedParentPush = key;
+        timelineEvents.push({ iteration: iter, type: 'force_parent' });
+        renderTimeline();
+      }
+    }
+    forcedParentId = parentId;
+    forcedParentRemaining = remaining;
+    const indicator = document.getElementById('forced-parent-indicator');
+    if (parentId && remaining > 0) {
+      indicator.textContent = 'Forced: ' + parentId.substring(0, 8) + '... (' + remaining + ' left)';
+      indicator.style.display = 'inline-block';
+    } else {
+      indicator.style.display = 'none';
+    }
+  }
+
+  // ─── Metrics Comparison Chart (Horizontal Bars) ───────────────
+  function rebuildMetricsChart(selectedProg) {
+    const chartContainer = document.getElementById('metrics-chart-container');
+    const emptyEl = document.getElementById('metrics-empty');
+    if (!selectedProg || !selectedProg.metrics || Object.keys(selectedProg.metrics).length === 0) {
+      chartContainer.style.display = 'none';
+      if (emptyEl) emptyEl.style.display = 'block';
+      return;
+    }
+
+    chartContainer.style.display = 'block';
+    if (emptyEl) emptyEl.style.display = 'none';
+    const tc = plotColors();
+
+    const bestProg = bestProgramId ? programMap[bestProgramId] : null;
+    const bestMetrics = (bestProg && bestProg.metrics) ? bestProg.metrics : {};
+
+    const metricKeys = Object.keys(selectedProg.metrics).filter(k => {
+      return k !== 'combined_score' && typeof selectedProg.metrics[k] === 'number';
+    });
+
+    if (metricKeys.length === 0) {
+      chartContainer.style.display = 'none';
+      if (emptyEl) emptyEl.style.display = 'block';
+      return;
+    }
+
+    const selectedValues = metricKeys.map(k => selectedProg.metrics[k] || 0);
+    const bestValues = metricKeys.map(k => typeof bestMetrics[k] === 'number' ? bestMetrics[k] : 0);
+
+    // Also add parent comparison if available
+    const parentProg = selectedProg.parent_id ? programMap[selectedProg.parent_id] : null;
+    const parentMetrics = (parentProg && parentProg.metrics) ? parentProg.metrics : {};
+    const parentValues = metricKeys.map(k => typeof parentMetrics[k] === 'number' ? parentMetrics[k] : 0);
+
+    // Horizontal bar chart
+    const traces = [{
+      y: metricKeys,
+      x: selectedValues,
+      type: 'bar',
+      orientation: 'h',
+      name: 'Selected (i' + selectedProg.iteration + ')',
+      marker: { color: tc.bestLine, opacity: 0.9 },
+    }];
+
+    if (parentProg && parentProg.id !== selectedProg.id) {
+      traces.push({
+        y: metricKeys,
+        x: parentValues,
+        type: 'bar',
+        orientation: 'h',
+        name: 'Parent (i' + (parentProg.iteration || '?') + ')',
+        marker: { color: tc.scoreMid, opacity: 0.6 },
+      });
+    }
+
+    if (bestProg && bestProg.id !== selectedProg.id) {
+      traces.push({
+        y: metricKeys,
+        x: bestValues,
+        type: 'bar',
+        orientation: 'h',
+        name: 'Best (i' + (bestProg.iteration || '?') + ')',
+        marker: { color: tc.scoreHigh, opacity: 0.7 },
+      });
+    }
+
+    const layout = {
+      paper_bgcolor: 'rgba(0,0,0,0)',
+      plot_bgcolor: 'rgba(0,0,0,0)',
+      font: { color: tc.fontColor, size: 10 },
+      margin: { l: 10, r: 16, t: 32, b: 40 },
+      barmode: 'group',
+      yaxis: { automargin: true, tickfont: { size: 10 } },
+      xaxis: {
+        title: { text: 'Value', font: { size: 10 }, standoff: 6 },
+        gridcolor: tc.gridColor,
+        zeroline: true,
+        zerolinecolor: tc.gridColor,
+        automargin: true,
+        tickformat: '.3g',
+      },
+      showlegend: true,
+      legend: { x: 0.5, y: 1.08, xanchor: 'center', orientation: 'h', font: { size: 10 }, bgcolor: 'rgba(0,0,0,0)' },
+    };
+
+    Plotly.newPlot('metrics-comparison', traces, layout, {
+      responsive: true, displayModeBar: false,
+    });
+  }
+
+  // ─── Keyboard Shortcuts ──────────────────────────────────
+  document.addEventListener('keydown', function(e) {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    if (e.code === 'Space') {
+      e.preventDefault();
+      if (discoveryState === 'running') window.pauseDiscovery();
+      else if (discoveryState === 'paused') window.resumeDiscovery();
+    } else if (e.code === 'Escape') {
+      if (selectedId) deselectProgram();
+    }
+  });
+
+  function handleServerError(msg) {
+    if (msg.type === 'error' && msg.message) showToast(msg.message, 'error');
+  }
 
   // ─── Init ──────────────────────────────────────────────────
   rebuildPlot();

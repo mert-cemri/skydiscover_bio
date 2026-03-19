@@ -241,8 +241,7 @@ class AdaEvolveController(DiscoveryController):
         self._ensure_all_islands_seeded()
 
         for iteration in range(start_iteration, total):
-            if self.shutdown_event.is_set():
-                logger.info("Shutdown requested")
+            if not await self._pre_iteration():
                 break
 
             try:
@@ -558,6 +557,10 @@ class AdaEvolveController(DiscoveryController):
                 if feedback:
                     prompt = self.feedback_reader.apply_feedback(prompt)
                     self.feedback_reader.log_usage(iteration, feedback, self.feedback_reader.mode)
+
+            # Apply AI feedback (AITL)
+            if self.ai_feedback_reader:
+                prompt = self.ai_feedback_reader.apply_feedback(prompt)
 
             # Generate and evaluate
             return await self._execute_generation(

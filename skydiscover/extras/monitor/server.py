@@ -98,7 +98,7 @@ class MonitorServer:
         self.port = port
         self.max_solution_length = max_solution_length
 
-        self._queue: queue.Queue = queue.Queue()
+        self._queue: queue.Queue = queue.Queue(maxsize=50000)
 
         # In-memory state for reconnecting clients
         self._programs: List[Dict[str, Any]] = []
@@ -109,22 +109,37 @@ class MonitorServer:
         self._stats: Dict[str, Any] = {}
         self._config_summary: str = ""
 
+        # Memory bounds for program storage
+        self._max_programs = 10000  # Max programs to keep in memory
+        self._max_solution_cache = 5000  # Max solutions to cache
+
         # Per-program summary cache
         self._program_summary_cache: Dict[str, str] = {}
 
         # Human feedback reader (set via set_feedback_reader)
         self._feedback_reader: Optional[Any] = None
 
+        # AI feedback reader (set via set_ai_feedback_reader)
+        self._ai_feedback_reader: Optional[Any] = None
+
+        # HITL: command queue (server -> controller) and shutdown event
+        self._command_queue: Optional[queue.Queue] = None
+        self._shutdown_event: Optional[Any] = None  # mp.Event from controller
+        self._discovery_state: str = "running"  # "running", "paused", "stopped"
+
         # AI summary state
         self._summary_model: str = ""
         self._summary_api_key: str = ""
         self._summary_api_base: str = "https://api.openai.com/v1"
-        self._summary_top_k: int = 3
+        self._summary_top_k: int = 5
         self._summary_interval: int = 0  # 0 = manual only
         self._summary_text: str = ""
         self._summary_generating: bool = False
         self._summary_last_program_count: int = 0
         self._summary_executor: Optional[ThreadPoolExecutor] = None
+
+        # Per-client chat history for conversation memory
+        self._chat_histories: Dict[asyncio.StreamWriter, list] = {}
 
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._thread: Optional[threading.Thread] = None
@@ -165,8 +180,18 @@ class MonitorServer:
         loop.stop()
 
     def push_event(self, event: Dict[str, Any]) -> None:
-        """Enqueue an event for broadcast to all connected WebSocket clients."""
-        self._queue.put_nowait(event)
+        """Enqueue an event for broadcast. Drops oldest if queue is full."""
+        try:
+            self._queue.put_nowait(event)
+        except queue.Full:
+            try:
+                self._queue.get_nowait()  # Drop oldest
+            except queue.Empty:
+                pass
+            try:
+                self._queue.put_nowait(event)
+            except queue.Full:
+                pass  # Queue is contested, skip this event
 
     def set_config_summary(self, summary: str) -> None:
         """Set a human-readable config summary sent to new dashboard clients."""
@@ -176,9 +201,21 @@ class MonitorServer:
         """Attach a HumanFeedbackReader for dashboard human feedback controls."""
         self._feedback_reader = reader
 
+    def set_ai_feedback_reader(self, reader: Any) -> None:
+        """Attach an AIFeedbackReader so the dashboard can display AI guidance."""
+        self._ai_feedback_reader = reader
+
+    def set_command_queue(self, cmd_queue: queue.Queue) -> None:
+        """Set the command queue for sending HITL commands to the controller."""
+        self._command_queue = cmd_queue
+
+    def set_shutdown_event(self, event: Any) -> None:
+        """Set the controller's shutdown event for direct stop capability."""
+        self._shutdown_event = event
+
     def configure_summary(
         self,
-        model: str = "gpt-5-mini",
+        model: str = "gpt-4o-mini",
         api_key: str = "",
         api_base: str = "https://api.openai.com/v1",
         top_k: int = 3,
@@ -225,11 +262,38 @@ class MonitorServer:
             "human_feedback_history": self._feedback_reader.get_history(),
         }
 
+    def _get_ai_feedback_state(self) -> Dict[str, Any]:
+        """Return current AI feedback state for the dashboard."""
+        if not self._ai_feedback_reader:
+            return {
+                "ai_feedback_enabled": False,
+                "ai_feedback_text": "",
+                "ai_feedback_active": False,
+                "ai_cost_spent": 0.0,
+                "ai_budget_max": 0.0,
+                "ai_budget_exhausted": False,
+            }
+        reader = self._ai_feedback_reader
+        text = reader.read()
+        state = reader.get_state()
+        return {
+            "ai_feedback_enabled": True,
+            "ai_feedback_text": text,
+            "ai_feedback_active": bool(text),
+            "ai_cost_spent": round(state["cost_spent"], 4),
+            "ai_budget_max": state["budget_max"],
+            "ai_budget_exhausted": state["budget_exhausted"],
+        }
+
     def _build_init_state(self) -> Dict[str, Any]:
         """Build the full init_state payload for new/reconnecting WS clients."""
+        # For large runs, only send recent programs on init (client can request older ones)
+        max_init_programs = 2000
+        programs = self._programs[-max_init_programs:] if len(self._programs) > max_init_programs else self._programs
         state = {
             "type": "init_state",
-            "programs": self._programs,
+            "programs": programs,
+            "total_program_count": len(self._programs),
             "best_program_id": self._best_program_id,
             "stats": self._stats,
             "config_summary": self._config_summary,
@@ -237,8 +301,11 @@ class MonitorServer:
             "summary_model": self._summary_model or "",
             "summary_text": self._summary_text,
             "summary_generating": self._summary_generating,
+            "discovery_state": self._discovery_state,
+            "hitl_enabled": self._command_queue is not None,
         }
         state.update(self._get_feedback_state())
+        state.update(self._get_ai_feedback_state())
         return state
 
     def _load_dashboard(self) -> None:
@@ -314,10 +381,16 @@ class MonitorServer:
                 writer.close()
                 return
 
+            MAX_HEADERS = 100
+            header_count = 0
             while True:
                 line = (await reader.readline()).decode("utf-8", errors="replace").strip()
                 if not line:
                     break
+                header_count += 1
+                if header_count > MAX_HEADERS:
+                    writer.close()
+                    return
                 if ":" in line:
                     k, _, v = line.partition(":")
                     raw_headers[k.strip().lower()] = v.strip()
@@ -382,6 +455,7 @@ class MonitorServer:
             logger.debug("WebSocket handler error", exc_info=True)
         finally:
             self._clients.discard(writer)
+            self._chat_histories.pop(writer, None)
             logger.debug(f"WS client disconnected ({len(self._clients)} total)")
 
     async def _handle_client_msg(self, writer: asyncio.StreamWriter, raw: str) -> None:
@@ -391,6 +465,22 @@ class MonitorServer:
         except Exception:
             return
         t = msg.get("type")
+        try:
+            await self._dispatch_client_msg(writer, msg, t)
+        except Exception:
+            logger.debug(f"Error handling client message type={t}", exc_info=True)
+            try:
+                await self._ws_send(
+                    writer,
+                    json.dumps({"type": "error", "message": f"Server error handling {t}"}),
+                )
+            except Exception:
+                pass
+
+    async def _dispatch_client_msg(
+        self, writer: asyncio.StreamWriter, msg: dict, t: str
+    ) -> None:
+        """Inner dispatch — exceptions here are caught by _handle_client_msg."""
         if t == "request_full_state":
             await self._ws_send(writer, json.dumps(self._build_init_state()))
         elif t == "request_program_solution":
@@ -452,6 +542,16 @@ class MonitorServer:
                     {
                         "type": "feedback_ack",
                         **self._get_feedback_state(),
+                    }
+                ),
+            )
+        elif t == "request_ai_feedback_state":
+            await self._ws_send(
+                writer,
+                json.dumps(
+                    {
+                        "type": "ai_feedback_state",
+                        **self._get_ai_feedback_state(),
                     }
                 ),
             )
@@ -526,76 +626,184 @@ class MonitorServer:
         elif t == "request_summary":
             await self._trigger_summary()
 
+        # ─── Chat with AI about the evolution run ──────────────────
+        elif t == "chat_message":
+            user_text = msg.get("text", "").strip()
+            if user_text:
+                selected_id = msg.get("selected_program_id") or None
+                await self._handle_chat(writer, user_text, selected_id)
+
+        elif t == "suggest_feedback":
+            await self._suggest_feedback(writer)
+
+        # ─── HITL control commands ────────────────────────────────
+        elif t == "stop_discovery":
+            if self._command_queue:
+                self._command_queue.put_nowait({"type": "stop"})
+                # Also set shutdown event directly for immediate effect
+                if self._shutdown_event:
+                    self._shutdown_event.set()
+                self._discovery_state = "stopped"
+                await self._broadcast(json.dumps({
+                    "type": "discovery_state", "state": "stopped",
+                }))
+                logger.info("HITL: stop_discovery received from dashboard")
+            else:
+                await self._ws_send(writer, json.dumps({
+                    "type": "error", "message": "HITL commands not enabled",
+                }))
+
+        elif t == "pause_discovery":
+            if self._command_queue:
+                self._command_queue.put_nowait({"type": "pause"})
+                self._discovery_state = "paused"
+                await self._broadcast(json.dumps({
+                    "type": "discovery_state", "state": "paused",
+                }))
+                logger.info("HITL: pause_discovery received from dashboard")
+
+        elif t == "resume_discovery":
+            if self._command_queue:
+                self._command_queue.put_nowait({"type": "resume"})
+                self._discovery_state = "running"
+                await self._broadcast(json.dumps({
+                    "type": "discovery_state", "state": "running",
+                }))
+                logger.info("HITL: resume_discovery received from dashboard")
+
+        elif t == "force_parent":
+            program_id = msg.get("program_id", "")
+            num_iterations = msg.get("num_iterations", 1)
+            if self._command_queue and program_id:
+                self._command_queue.put_nowait({
+                    "type": "force_parent",
+                    "program_id": program_id,
+                    "num_iterations": num_iterations,
+                })
+                await self._broadcast(json.dumps({
+                    "type": "forced_parent_update",
+                    "forced_parent_id": program_id,
+                    "forced_parent_remaining": num_iterations,
+                }))
+                logger.info(
+                    f"HITL: force_parent {program_id[:8]}... "
+                    f"for {num_iterations} iteration(s)"
+                )
+
+        elif t == "clear_forced_parent":
+            if self._command_queue:
+                self._command_queue.put_nowait({"type": "clear_forced_parent"})
+                await self._broadcast(json.dumps({
+                    "type": "forced_parent_update",
+                    "forced_parent_id": None,
+                    "forced_parent_remaining": 0,
+                }))
+                logger.info("HITL: clear_forced_parent received from dashboard")
+
     # ─── Queue consumer & broadcast ──────────────────────────
 
     async def _consume_queue(self) -> None:
         while not self._stop_event.is_set():
-            try:
-                event = self._queue.get_nowait()
-            except queue.Empty:
-                await asyncio.sleep(0.05)
-                continue
+            processed = 0
+            while processed < 100:  # Process up to 100 events per batch
+                try:
+                    event = self._queue.get_nowait()
+                except queue.Empty:
+                    break
+                processed += 1
 
-            etype = event.get("type")
-            if etype == "new_program":
-                p = event.get("program", {})
-                # Annotate with human feedback state for replay on reconnect
-                if self._feedback_reader:
+                etype = event.get("type")
+
+                # Track discovery state from controller-side events
+                if etype == "discovery_state":
+                    self._discovery_state = event.get("state", self._discovery_state)
+
+                if etype == "new_program":
+                    p = event.get("program", {})
+                    # Annotate with human feedback state for replay on reconnect
+                    if self._feedback_reader:
+                        fb = self._feedback_reader.read()
+                        p["human_feedback_active"] = bool(fb)
+                    else:
+                        p["human_feedback_active"] = False
+                    self._programs.append(p)
+                    # Evict oldest programs if over capacity (keep recent + best)
+                    if len(self._programs) > self._max_programs:
+                        self._programs = self._programs[-self._max_programs:]
+                    pid = p.get("id", "")
+                    if "full_solution" in event:
+                        self._program_solutions[pid] = event["full_solution"]
+                    if "parent_full_solution" in event:
+                        self._parent_solutions[pid] = event["parent_full_solution"]
+                    # Evict old solution caches if over capacity
+                    if len(self._program_solutions) > self._max_solution_cache:
+                        # Keep most recent entries
+                        keys_to_keep = set(p.get("id", "") for p in self._programs[-self._max_solution_cache:])
+                        keys_to_keep.add(self._best_program_id or "")
+                        self._program_solutions = {k: v for k, v in self._program_solutions.items() if k in keys_to_keep}
+                        self._parent_solutions = {k: v for k, v in self._parent_solutions.items() if k in keys_to_keep}
+                    # Evict old program summary cache if over capacity
+                    if len(self._program_summary_cache) > self._max_solution_cache:
+                        recent_ids = set(p.get("id", "") for p in self._programs[-self._max_solution_cache:])
+                        self._program_summary_cache = {k: v for k, v in self._program_summary_cache.items() if k in recent_ids}
+                    # Independent best tracking: compare scores directly
+                    new_score = p.get("score", 0)
+                    if not isinstance(new_score, (int, float)):
+                        new_score = 0
+                    if new_score > self._best_score:
+                        self._best_score = new_score
+                        self._best_program_id = pid
+                        event["is_best"] = True
+                    elif event.get("is_best"):
+                        self._best_program_id = pid
+                        self._best_score = max(self._best_score, new_score)
+                    self._stats = event.get("stats", self._stats)
+
+                # Strip full_solution from broadcast (clients request on demand)
+                broadcast = {
+                    k: v for k, v in event.items() if k not in ("full_solution", "parent_full_solution")
+                }
+                # Include current human feedback status in program events
+                if etype == "new_program" and self._feedback_reader:
                     fb = self._feedback_reader.read()
-                    p["human_feedback_active"] = bool(fb)
-                else:
-                    p["human_feedback_active"] = False
-                self._programs.append(p)
-                pid = p.get("id", "")
-                if "full_solution" in event:
-                    self._program_solutions[pid] = event["full_solution"]
-                if "parent_full_solution" in event:
-                    self._parent_solutions[pid] = event["parent_full_solution"]
-                # Independent best tracking: compare scores directly
-                new_score = p.get("score", 0)
-                if not isinstance(new_score, (int, float)):
-                    new_score = 0
-                if new_score > self._best_score:
-                    self._best_score = new_score
-                    self._best_program_id = pid
-                    event["is_best"] = True
-                elif event.get("is_best"):
-                    self._best_program_id = pid
-                    self._best_score = max(self._best_score, new_score)
-                self._stats = event.get("stats", self._stats)
+                    broadcast["feedback_active"] = bool(fb)
+                    broadcast["feedback_text"] = fb if fb else ""
+                    broadcast["human_feedback_mode"] = self._feedback_reader.mode
+                # Include AI feedback state in program events
+                if etype == "new_program" and self._ai_feedback_reader:
+                    ai_state = self._get_ai_feedback_state()
+                    broadcast["ai_feedback_active"] = ai_state["ai_feedback_active"]
+                    broadcast["ai_feedback_text"] = ai_state["ai_feedback_text"]
+                    broadcast["ai_cost_spent"] = ai_state["ai_cost_spent"]
+                    broadcast["ai_budget_exhausted"] = ai_state["ai_budget_exhausted"]
+                await self._broadcast(json.dumps(broadcast))
 
-            # Strip full_solution from broadcast (clients request on demand)
-            broadcast = {
-                k: v for k, v in event.items() if k not in ("full_solution", "parent_full_solution")
-            }
-            # Include current human feedback status in program events
-            if etype == "new_program" and self._feedback_reader:
-                fb = self._feedback_reader.read()
-                broadcast["feedback_active"] = bool(fb)
-                broadcast["feedback_text"] = fb if fb else ""
-                broadcast["human_feedback_mode"] = self._feedback_reader.mode
-            await self._broadcast(json.dumps(broadcast))
+                # Auto-trigger AI summary every N new programs
+                if (
+                    etype == "new_program"
+                    and self._summary_interval > 0
+                    and self._summary_model
+                    and not self._summary_generating
+                ):
+                    count = len(self._programs)
+                    if count - self._summary_last_program_count >= self._summary_interval:
+                        await self._trigger_summary()
 
-            # Auto-trigger AI summary every N new programs
-            if (
-                etype == "new_program"
-                and self._summary_interval > 0
-                and self._summary_model
-                and not self._summary_generating
-            ):
-                count = len(self._programs)
-                if count - self._summary_last_program_count >= self._summary_interval:
-                    await self._trigger_summary()
+            if processed == 0:
+                await asyncio.sleep(0.05)
 
     async def _broadcast(self, message: str) -> None:
         if not self._clients:
             return
+        frame = _ws_encode_text(message)
         dead = set()
-        for writer in list(self._clients):
+        async def _send(writer):
             try:
-                await self._ws_send(writer, message)
+                writer.write(frame)
+                await writer.drain()
             except Exception:
                 dead.add(writer)
+        await asyncio.gather(*[_send(w) for w in list(self._clients)], return_exceptions=True)
         self._clients -= dead
 
     async def _ws_send(self, writer: asyncio.StreamWriter, text: str) -> None:
@@ -826,6 +1034,291 @@ class MonitorServer:
             )
         )
 
+    # ─── AI Feedback Suggestion ──────────────────────────────────
+
+    async def _suggest_feedback(self, writer: asyncio.StreamWriter) -> None:
+        """Generate an AI suggestion for what human feedback to give the LLM."""
+        if not self._summary_model or not self._summary_api_key:
+            await self._ws_send(
+                writer,
+                json.dumps({
+                    "type": "feedback_suggestion",
+                    "error": "AI not configured. Set summary model and OPENAI_API_KEY.",
+                }),
+            )
+            return
+
+        if not self._summary_executor:
+            self._summary_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="summary")
+
+        # Build context
+        analysis = self._compute_solution_discovery_analysis()
+        top_programs = self._get_top_k_programs()
+        code_snippets = []
+        for i, p in enumerate(top_programs[:3], 1):
+            pid = p.get("id", "?")
+            code = self._program_solutions.get(pid, "")[:1500]
+            code_snippets.append(
+                f"Top #{i} (score={p.get('score', '?')}, iter={p.get('iteration', '?')}):\n{code}"
+            )
+
+        system_prompt = (
+            "You are helping a human steer an evolutionary code discovery process. "
+            "Based on the current run state and top programs, suggest concise feedback "
+            "that the human should give to the LLM to improve the next iterations.\n\n"
+            "Rules:\n"
+            "- Output ONLY the feedback text (no explanation, no preamble)\n"
+            "- Be specific and actionable (name algorithms, techniques, parameters)\n"
+            "- Keep it under 3 sentences\n"
+            "- Focus on what's missing or what could break the plateau\n"
+            "- Consider what the top programs are already doing well and what they lack"
+        )
+
+        stats_text = ""
+        if self._stats:
+            stats_text = (
+                f"Best score: {self._stats.get('best_score', '?')}, "
+                f"Iterations since improvement: {self._stats.get('iterations_since_improvement', '?')}, "
+                f"Total programs: {self._stats.get('total_programs', len(self._programs))}"
+            )
+
+        user_msg = f"Run stats: {stats_text}\n\n{analysis}\n\n" + "\n\n".join(code_snippets)
+        prompt_data = {"system": system_prompt, "user": user_msg}
+
+        try:
+            loop = asyncio.get_running_loop()
+            result = await loop.run_in_executor(
+                self._summary_executor,
+                self._call_program_summary_api,
+                prompt_data,
+            )
+            await self._ws_send(
+                writer,
+                json.dumps({"type": "feedback_suggestion", "text": result or ""}),
+            )
+        except Exception as e:
+            logger.warning(f"Feedback suggestion failed: {e}", exc_info=True)
+            await self._ws_send(
+                writer,
+                json.dumps({"type": "feedback_suggestion", "error": f"AI error: {e}"}),
+            )
+
+    # ─── Chat with AI ──────────────────────────────────────────
+
+    def _build_chat_context(self, selected_program_id: Optional[str] = None) -> str:
+        """Build rich context string for the chat agent from current run state."""
+        parts: List[str] = []
+
+        # 1. Run stats
+        if self._stats:
+            parts.append(
+                "=== RUN STATS ===\n"
+                f"Run config: {self._config_summary}\n"
+                f"Total programs: {self._stats.get('total_programs', len(self._programs))}\n"
+                f"Current iteration: {self._stats.get('current_iteration', '?')}\n"
+                f"Best score: {self._stats.get('best_score', '?')}\n"
+                f"Iterations since improvement: {self._stats.get('iterations_since_improvement', '?')}\n"
+                f"Elapsed: {self._stats.get('elapsed_seconds', '?')}s"
+            )
+
+        # 2. Population summary
+        scored = [p for p in self._programs if isinstance(p.get("score"), (int, float))]
+        if scored:
+            scores = [p["score"] for p in scored]
+            islands = {p.get("island") for p in scored if p.get("island") is not None}
+            iterations = [p.get("iteration", 0) for p in scored]
+            parts.append(
+                "=== POPULATION SUMMARY ===\n"
+                f"Total programs: {len(scored)}\n"
+                f"Score range: {min(scores):.6f} — {max(scores):.6f}\n"
+                f"Islands: {len(islands) if islands else 'N/A'}\n"
+                f"Iteration range: {min(iterations)} — {max(iterations)}"
+            )
+
+        # 3. Evolution analysis
+        analysis = self._compute_solution_discovery_analysis()
+        if analysis:
+            parts.append(analysis)
+
+        # 4. Best program (full detail)
+        best_id = self._best_program_id
+        if best_id:
+            best_prog = next((p for p in self._programs if p.get("id") == best_id), None)
+            if best_prog:
+                code = self._program_solutions.get(best_id, "")
+                if len(code) > 2000:
+                    code = code[:2000] + "\n... (truncated)"
+                island_str = f", island={best_prog.get('island')}" if best_prog.get("island") is not None else ""
+                parts.append(
+                    f"=== BEST PROGRAM (ID: {best_id}) ===\n"
+                    f"Score: {best_prog.get('score', '?')}, Iter: {best_prog.get('iteration', '?')}{island_str}\n"
+                    f"Metrics: {json.dumps(best_prog.get('metrics', {}))}\n"
+                    f"Code:\n{code}"
+                )
+
+        # 5. Selected program (full detail + parent)
+        if selected_program_id and selected_program_id != best_id:
+            sel_prog = next((p for p in self._programs if p.get("id") == selected_program_id), None)
+            if sel_prog:
+                sel_code = self._program_solutions.get(selected_program_id, "")
+                if len(sel_code) > 2000:
+                    sel_code = sel_code[:2000] + "\n... (truncated)"
+                parent_code = self._parent_solutions.get(selected_program_id, "")
+                if parent_code and len(parent_code) > 1500:
+                    parent_code = parent_code[:1500] + "\n... (truncated)"
+                island_str = f", island={sel_prog.get('island')}" if sel_prog.get("island") is not None else ""
+                parent_score = sel_prog.get("parent_score")
+                score = sel_prog.get("score", "?")
+                delta_str = ""
+                if isinstance(parent_score, (int, float)) and isinstance(score, (int, float)):
+                    delta_str = f", delta={score - parent_score:+.6f}"
+                sel_section = (
+                    f"=== SELECTED PROGRAM (ID: {selected_program_id}) ===\n"
+                    f"Score: {score}, Iter: {sel_prog.get('iteration', '?')}{island_str}\n"
+                    f"Parent score: {parent_score}{delta_str}\n"
+                    f"Label: {sel_prog.get('label_type', '?')}, Generation: {sel_prog.get('generation', '?')}\n"
+                    f"Metrics: {json.dumps(sel_prog.get('metrics', {}))}\n"
+                    f"Code:\n{sel_code}"
+                )
+                if parent_code:
+                    sel_section += f"\n\nParent code:\n{parent_code}"
+                parts.append(sel_section)
+
+        # 6. Top 5 programs (snippets, excluding best and selected)
+        exclude_ids = {best_id, selected_program_id} - {None}
+        top_programs = self._get_top_k_programs()
+        top_count = 0
+        for p in top_programs:
+            pid = p.get("id", "?")
+            if pid in exclude_ids:
+                continue
+            top_count += 1
+            if top_count > 5:
+                break
+            snippet = p.get("solution_snippet", self._program_solutions.get(pid, "")[:500])
+            if len(snippet) > 500:
+                snippet = snippet[:500] + "..."
+            island_str = f", island={p.get('island')}" if p.get("island") is not None else ""
+            parts.append(
+                f"--- Top #{top_count} ---\n"
+                f"ID: {pid}, Score: {p.get('score', '?')}, Iter: {p.get('iteration', '?')}{island_str}\n"
+                f"Label: {p.get('label_type', '?')}\n"
+                f"Snippet:\n{snippet}"
+            )
+
+        # 7. Active human feedback
+        if self._feedback_reader:
+            try:
+                feedback_text = self._feedback_reader.read()
+                if feedback_text:
+                    parts.append(
+                        "=== ACTIVE HUMAN FEEDBACK ===\n"
+                        f"{feedback_text}"
+                    )
+            except Exception:
+                pass
+
+        # 8. Forced parent effectiveness
+        forced = [p for p in self._programs if p.get("is_forced_parent")]
+        if forced:
+            forced_scores = [p["score"] for p in forced if isinstance(p.get("score"), (int, float))]
+            all_scores = [p["score"] for p in scored] if scored else []
+            avg_forced = sum(forced_scores) / len(forced_scores) if forced_scores else 0
+            avg_all = sum(all_scores) / len(all_scores) if all_scores else 0
+            parts.append(
+                "=== FORCED PARENT EFFECTIVENESS ===\n"
+                f"Forced parent programs: {len(forced)}\n"
+                f"Avg score (forced): {avg_forced:.6f}\n"
+                f"Avg score (overall): {avg_all:.6f}"
+            )
+
+        return "\n\n".join(parts)
+
+    async def _handle_chat(
+        self,
+        writer: asyncio.StreamWriter,
+        user_text: str,
+        selected_program_id: Optional[str] = None,
+    ) -> None:
+        """Handle a chat message from the dashboard — answer questions about the run."""
+        if not self._summary_model or not self._summary_api_key:
+            await self._ws_send(
+                writer,
+                json.dumps({
+                    "type": "chat_response",
+                    "error": "AI not configured. Set summary model and OPENAI_API_KEY.",
+                }),
+            )
+            return
+
+        if not self._summary_executor:
+            self._summary_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="summary")
+
+        # Build rich context
+        context = self._build_chat_context(selected_program_id)
+
+        # Build system prompt
+        selected_note = ""
+        if selected_program_id:
+            selected_note = (
+                f"The user has selected program {selected_program_id} on the dashboard. "
+                "Prioritize answering about this program when relevant.\n"
+            )
+
+        feedback_note = ""
+        if self._feedback_reader:
+            try:
+                if self._feedback_reader.read():
+                    feedback_note = "Active human feedback guidance is included in the context below.\n"
+            except Exception:
+                pass
+
+        system_prompt = (
+            "You are an AI assistant embedded in SkyDiscover, an evolutionary code discovery system. "
+            "You have access to the current state of the evolution run including statistics, "
+            "top programs, their code, and evolution history.\n\n"
+            f"{selected_note}"
+            f"{feedback_note}"
+            "Answer the user's question concisely and helpfully. "
+            "When discussing programs, reference specific scores, iterations, and code details. "
+            "When suggesting improvements, be specific and actionable.\n\n"
+            "Use markdown: **bold** for key terms, `code` for identifiers, `- ` for bullets.\n"
+            "Keep responses under 200 words unless the question requires more detail.\n\n"
+            f"{context}"
+        )
+
+        # Build multi-turn messages
+        messages = [{"role": "system", "content": system_prompt}]
+        history = self._chat_histories.get(writer, [])
+        messages.extend(history)
+        messages.append({"role": "user", "content": user_text})
+
+        try:
+            loop = asyncio.get_running_loop()
+            result = await loop.run_in_executor(
+                self._summary_executor,
+                self._call_llm_api,
+                messages,
+            )
+            # Store in conversation history
+            hist = self._chat_histories.setdefault(writer, [])
+            hist.append({"role": "user", "content": user_text})
+            hist.append({"role": "assistant", "content": result or "(empty response)"})
+            # Cap at 20 messages (10 turns)
+            if len(hist) > 20:
+                self._chat_histories[writer] = hist[-20:]
+
+            await self._ws_send(
+                writer,
+                json.dumps({"type": "chat_response", "text": result or "(empty response)"}),
+            )
+        except Exception as e:
+            logger.warning(f"Chat response failed: {e}", exc_info=True)
+            await self._ws_send(
+                writer,
+                json.dumps({"type": "chat_response", "error": f"AI error: {e}"}),
+            )
+
     def _get_top_k_programs(self) -> List[Dict[str, Any]]:
         """Get top-k programs by score across all islands."""
         if not self._programs:
@@ -1008,17 +1501,27 @@ class MonitorServer:
         return {"system": system, "user": "\n".join(parts)}
 
     def _call_llm_api(
-        self, prompt_data: Dict[str, str], max_tokens: int = 8192, timeout: int = 180
+        self, messages: Any, max_tokens: int = 8192, timeout: int = 180
     ) -> str:
-        """Call OpenAI-compatible API (blocking, runs in executor thread)."""
+        """Call OpenAI-compatible API (blocking, runs in executor thread).
+
+        Args:
+            messages: Either a list of message dicts (multi-turn) or a legacy
+                      dict with 'system' and 'user' keys (auto-converted).
+        """
+        # Support legacy dict format for backward compat
+        if isinstance(messages, dict):
+            messages = [
+                {"role": "system", "content": messages["system"]},
+                {"role": "user", "content": messages["user"]},
+            ]
         url = f"{self._summary_api_base}/chat/completions"
+        if not url.startswith(("https://", "http://127.0.0.1", "http://localhost")):
+            raise ValueError(f"Refusing to call non-HTTPS/non-local API URL: {url}")
         body = json.dumps(
             {
                 "model": self._summary_model,
-                "messages": [
-                    {"role": "system", "content": prompt_data["system"]},
-                    {"role": "user", "content": prompt_data["user"]},
-                ],
+                "messages": messages,
                 "max_completion_tokens": max_tokens,
             }
         ).encode("utf-8")

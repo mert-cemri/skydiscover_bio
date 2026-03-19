@@ -530,6 +530,39 @@ class MonitorConfig:
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# Extras — AI-in-the-loop autonomous feedback
+# ═══════════════════════════════════════════════════════════════════════
+
+
+@dataclass
+class AIFeedbackConfig:
+    """Configuration for autonomous AI feedback during discovery.
+
+    When enabled, an AI model periodically analyses discovery statistics
+    and injects strategic guidance into the LLM system prompt, steering
+    the search without human intervention.
+    """
+
+    enabled: bool = False
+    model: str = "gpt-4o-mini"
+    api_key: Optional[str] = None  # Falls back to OPENAI_API_KEY
+    api_base: str = "https://api.openai.com/v1"
+
+    # Trigger frequency
+    interval: int = 10  # Analyse every N iterations
+    min_population: int = 10  # Skip until database has this many programs
+
+    # Guardrails
+    max_cost_dollars: float = 10.0  # Hard budget cap per run
+    max_feedback_chars: int = 2000  # Truncate AI output
+    api_timeout_seconds: int = 10  # Per-call timeout
+    auto_clear_after: int = 20  # Clear feedback if no improvement after N iters
+
+    # Context
+    include_problem_description: bool = True  # Include system message in AI prompt
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # Master Configuration
 # ═══════════════════════════════════════════════════════════════════════
 
@@ -555,6 +588,9 @@ class Config:
 
     # Live monitor dashboard
     monitor: MonitorConfig = field(default_factory=MonitorConfig)
+
+    # AI-in-the-loop autonomous feedback
+    ai_feedback: AIFeedbackConfig = field(default_factory=AIFeedbackConfig)
 
     # Human feedback settings
     human_feedback_enabled: bool = False
@@ -623,6 +659,7 @@ class Config:
                 "evaluator",
                 "agentic",
                 "monitor",
+                "ai_feedback",
             ] and hasattr(config, key):
                 setattr(config, key, value)
 
@@ -671,6 +708,8 @@ class Config:
             config.agentic = AgenticConfig(**agentic_dict)
         if "monitor" in config_dict:
             config.monitor = MonitorConfig(**config_dict["monitor"])
+        if "ai_feedback" in config_dict:
+            config.ai_feedback = AIFeedbackConfig(**config_dict["ai_feedback"])
 
         return config
 
@@ -744,6 +783,19 @@ class Config:
                 "summary_model": self.monitor.summary_model,
                 "summary_top_k": self.monitor.summary_top_k,
                 "summary_interval": self.monitor.summary_interval,
+            },
+            # AI-in-the-loop
+            "ai_feedback": {
+                "enabled": self.ai_feedback.enabled,
+                "model": self.ai_feedback.model,
+                "api_base": self.ai_feedback.api_base,
+                "interval": self.ai_feedback.interval,
+                "min_population": self.ai_feedback.min_population,
+                "max_cost_dollars": self.ai_feedback.max_cost_dollars,
+                "max_feedback_chars": self.ai_feedback.max_feedback_chars,
+                "api_timeout_seconds": self.ai_feedback.api_timeout_seconds,
+                "auto_clear_after": self.ai_feedback.auto_clear_after,
+                "include_problem_description": self.ai_feedback.include_problem_description,
             },
             # Human-in-the-loop
             "human_feedback_enabled": self.human_feedback_enabled,

@@ -1,0 +1,157 @@
+# Multi-agent terminal scaffold optimization with Harbor-backed evaluation.
+#
+# The seed program keeps only the primitive runtime fixed. Almost the entire
+# scaffold architecture lives inside EVOLVE-BLOCK:
+#   - agent roster and count
+#   - role prompts and tool permissions
+#   - handoff graph and scheduler
+#   - shared memory and context management
+#   - response parsing and observation formatting
+#   - retry / verification / completion policy
+#
+# Evaluation:
+#   - Default: bundled Harbor-format mini-suite in tasks/train and tasks/test
+#   - Optional: set TBENCH_TASK_ROOT=/path/to/harbor/taskset to use an external
+#     Harbor-compatible task collection
+#
+# Usage:
+#   SOLVER_MODEL=gpt-4o-mini TRAIN_TASKS=3 \
+#   uv run skydiscover-run \
+#     benchmarks/multiagent/terminal_bench/initial_program.py \
+#     benchmarks/multiagent/terminal_bench/evaluator.py \
+#     --config benchmarks/multiagent/terminal_bench/config.yaml
+#
+# External Harbor tasks:
+#   TBENCH_TASK_ROOT=/path/to/tasks \
+#   uv run skydiscover-run \
+#     benchmarks/multiagent/terminal_bench/initial_program.py \
+#     benchmarks/multiagent/terminal_bench/evaluator.py \
+#     --config benchmarks/multiagent/terminal_bench/config.yaml
+#
+# Test generalization:
+#   python benchmarks/multiagent/terminal_bench/evaluator.py \
+#     --test outputs/.../best/best_program.py
+
+language: python
+diff_based_generation: true
+max_iterations: 50
+checkpoint_interval: 5
+max_solution_length: 60000
+
+llm:
+  api_base: https://api.openai.com/v1
+  models:
+    - name: "gpt-5"
+      weight: 1.0
+  max_tokens: 16384
+  timeout: 200
+
+prompt:
+  system_message: |
+    You are evolving a Harbor-evaluated multi-agent terminal scaffold.
+
+    ABSOLUTE RULE:
+    - You may ONLY modify code between the markers:
+      # EVOLVE-BLOCK-START
+      ...
+      # EVOLVE-BLOCK-END
+    - Do NOT change any code outside that region.
+
+    You MUST preserve:
+    - call_llm_multi(system, messages) function signature
+    - Tool functions: run_shell, read_file, write_file, list_dir
+    - The run_agentic(task, work_dir) entrypoint
+    - The run_pipeline(task, work_dir) function signature and return format
+
+    You MAY freely change INSIDE the EVOLVE-BLOCK, including:
+    1. Agent roster, count, roles, and per-agent prompts
+    2. Handoff graph, scheduler, and routing policy
+    3. Shared memory structure and summarization
+    4. MAX_GLOBAL_TURNS / COMMAND_TIMEOUT / MAX_CONTEXT_MESSAGES
+    5. Response schema and parse_response()
+    6. Tool permissions and filtering by role
+    7. Observation formatting and truncation
+    8. Retry, reflection, and failure recovery logic
+    9. Completion and verification policy
+    10. The internal run_multiagent_scaffold() logic
+    11. Any helper dataclasses or coordination utilities inside the block
+
+    BENCHMARK CONTRACT:
+    - The scaffold is evaluated on Harbor-format Docker tasks.
+    - Optimize for robust general-purpose terminal problem solving, not task-specific memorization.
+    - The final verifier should only end when the task has actually been checked.
+
+    SCORING:
+    - Primary objective: Harbor task completion rate
+    - Small efficiency bonus for fewer tool calls
+    - Small penalty for bloated agent counts
+    - CRITICAL: held-out test tasks are distinct from train tasks
+
+    WHAT TO OPTIMIZE:
+    - Agent specialization and collaboration quality
+    - Handoff and retry policy
+    - Shared memory usefulness
+    - Parser robustness and actionability
+    - Verification behavior before completion
+    - Context compression without losing key evidence
+    - Tool choice discipline and error recovery
+
+    WHAT GENERALIZES:
+    - Good decomposition across specialists
+    - Clear handoffs with compact shared memory
+    - Evidence-driven execution and verification
+    - Robust parsing under imperfect model outputs
+    - Recovery after command failures or partial progress
+
+    WHAT DOES NOT GENERALIZE (avoid):
+    - Task-specific command recipes baked into prompts
+    - Brittle assumptions about one task layout
+    - Ending early without explicit verification
+    - Overspecializing one agent while the others do nothing
+
+search:
+  type: "adaevolve"
+  num_context_programs: 3
+  database:
+    population_size: 20
+    num_islands: 2
+    migration_interval: 10
+    migration_count: 3
+    decay: 0.9
+    intensity_min: 0.15
+    intensity_max: 0.5
+    use_unified_archive: true
+    fitness_weight: 1.0
+    novelty_weight: 0.0
+    diversity_strategy: "code"
+    use_dynamic_islands: true
+    max_islands: 4
+    spawn_stagnation_threshold: 0.02
+    spawn_cooldown_iterations: 15
+    use_paradigm_breakthrough: true
+    paradigm_window_size: 10
+    paradigm_improvement_threshold: 0.10
+    paradigm_max_uses: 3
+
+evaluator:
+  timeout: 900
+  cascade_evaluation: true
+  cascade_thresholds:
+    - 0.05
+    - 0.3
+
+human_feedback_enabled: true
+human_feedback_mode: append
+
+ai_feedback:
+  enabled: true
+  model: gpt-5
+  interval: 5
+  min_population: 5
+  max_cost_dollars: 999999.0
+  auto_clear_after: 15
+  include_problem_description: true
+
+monitor:
+  enabled: true
+  port: 8889

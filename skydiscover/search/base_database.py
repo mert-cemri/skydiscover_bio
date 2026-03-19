@@ -98,6 +98,10 @@ class ProgramDatabase(ABC):
         # Best program tracking
         self.best_program_id: Optional[str] = None
 
+        # HITL: forced parent override
+        self.forced_parent_id: Optional[str] = None
+        self.forced_parent_remaining: int = 0
+
         # Prompt log
         self.prompts_by_program: Optional[Dict[str, Dict[str, Dict[str, str]]]] = None
 
@@ -292,6 +296,46 @@ class ProgramDatabase(ABC):
     def get(self, program_id: str) -> Optional[Program]:
         """Get a program by ID"""
         return self.programs.get(program_id)
+
+    # ------------------------------------------------------------------
+    # HITL: forced parent override
+    # ------------------------------------------------------------------
+
+    def set_forced_parent(self, program_id: str, num_iterations: int = 1) -> bool:
+        """Force a specific program to be the parent for the next N iterations."""
+        if program_id not in self.programs:
+            logger.warning(f"Cannot force parent: program {program_id} not found")
+            return False
+        self.forced_parent_id = program_id
+        self.forced_parent_remaining = num_iterations
+        logger.info(
+            f"Forced parent set: {program_id[:8]}... for {num_iterations} iteration(s)"
+        )
+        return True
+
+    def clear_forced_parent(self) -> None:
+        """Clear forced parent override."""
+        if self.forced_parent_id:
+            logger.info(f"Forced parent cleared (was {self.forced_parent_id[:8]}...)")
+        self.forced_parent_id = None
+        self.forced_parent_remaining = 0
+
+    def consume_forced_parent(self) -> Optional[Program]:
+        """If forced parent is active, return it and decrement counter. Otherwise None."""
+        if self.forced_parent_id and self.forced_parent_remaining > 0:
+            prog = self.programs.get(self.forced_parent_id)
+            if prog:
+                self.forced_parent_remaining -= 1
+                if self.forced_parent_remaining <= 0:
+                    logger.info("Forced parent exhausted, reverting to algorithmic selection")
+                    self.forced_parent_id = None
+                    self.forced_parent_remaining = 0
+                return prog
+            # Program no longer exists
+            logger.warning(f"Forced parent {self.forced_parent_id} not found, clearing")
+            self.forced_parent_id = None
+            self.forced_parent_remaining = 0
+        return None
 
     # ------------------------------------------------------------------
     # Prompt logging

@@ -8,6 +8,8 @@ that content is appended to (or replaces) the LLM system message.
 
 import logging
 import os
+import tempfile
+import threading
 import time as _time
 
 logger = logging.getLogger(__name__)
@@ -46,6 +48,7 @@ class HumanFeedbackReader:
         self._last_content: str = ""
         self._current_system_prompt: str = ""
         self._history: list = []
+        self._file_lock = threading.Lock()
         self._create_initial_file()
 
     def _create_initial_file(self) -> None:
@@ -61,30 +64,32 @@ class HumanFeedbackReader:
         Read current feedback, stripping comment lines.
         Returns empty string if file is empty, missing, or only has comments.
         """
-        try:
-            with open(self.path, "r") as f:
-                raw = f.read()
-        except (FileNotFoundError, PermissionError):
-            return ""
+        with self._file_lock:
+            try:
+                with open(self.path, "r") as f:
+                    raw = f.read()
+            except OSError as e:
+                logger.warning("Failed to read feedback file %s: %s", self.path, e)
+                return ""
 
-        lines = []
-        for line in raw.splitlines():
-            stripped = line.strip()
-            if stripped and not stripped.startswith("#"):
-                lines.append(line)
+            lines = []
+            for line in raw.splitlines():
+                stripped = line.strip()
+                if stripped and not stripped.startswith("#"):
+                    lines.append(line)
 
-        content = "\n".join(lines).strip()
-        if len(content) > MAX_FEEDBACK_CHARS:
-            content = content[:MAX_FEEDBACK_CHARS]
+            content = "\n".join(lines).strip()
+            if len(content) > MAX_FEEDBACK_CHARS:
+                content = content[:MAX_FEEDBACK_CHARS]
 
-        if content != self._last_content:
-            if content:
-                logger.info(f"Human feedback updated ({len(content)} chars)")
-            elif self._last_content:
-                logger.info("Human feedback cleared")
-            self._last_content = content
+            if content != self._last_content:
+                if content:
+                    logger.info(f"Human feedback updated ({len(content)} chars)")
+                elif self._last_content:
+                    logger.info("Human feedback cleared")
+                self._last_content = content
 
-        return content
+            return content
 
     def write_from_dashboard(self, text: str) -> None:
         """
@@ -153,9 +158,23 @@ class HumanFeedbackReader:
         }
 
     def _write_feedback(self, text: str) -> None:
-        """Write feedback text to the file, preserving the comment header."""
-        with open(self.path, "w") as f:
-            if text:
-                f.write(_INITIAL_TEMPLATE + "\n" + text + "\n")
-            else:
-                f.write(_INITIAL_TEMPLATE)
+        """Write feedback text to the file atomically, preserving the comment header."""
+        content = _INITIAL_TEMPLATE + "\n" + text + "\n" if text else _INITIAL_TEMPLATE
+        dir_name = os.path.dirname(self.path)
+        with self._file_lock:
+            try:
+                fd, tmp_path = tempfile.mkstemp(dir=dir_name, suffix=".tmp")
+                try:
+                    with os.fdopen(fd, "w") as f:
+                        f.write(content)
+                    os.replace(tmp_path, self.path)
+                except BaseException:
+                    try:
+                        os.unlink(tmp_path)
+                    except OSError:
+                        pass
+                    raise
+            except Exception:
+                logger.warning("Atomic write failed, falling back to direct write", exc_info=True)
+                with open(self.path, "w") as f:
+                    f.write(content)

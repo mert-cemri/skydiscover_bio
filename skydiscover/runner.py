@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import queue
 import signal
 import sys
 import time
@@ -77,6 +78,9 @@ class Runner:
 
         # Initialize the discovery controller
         self.discovery_controller: Optional[DiscoveryController] = None
+
+        # HITL: shared command queue for server -> controller communication
+        self._hitl_command_queue: queue.Queue = queue.Queue()
 
         logger.info(f"Runner ready: search={self.name}, program={self.initial_program_path}")
 
@@ -157,6 +161,7 @@ class Runner:
         try:
             monitor_server = self._start_monitor(max_iterations)
             self._setup_human_feedback(monitor_server)
+            self._setup_ai_feedback()
             self._setup_monitor_summary(monitor_server)
             self._push_existing_to_monitor()
             self._install_signal_handlers()
@@ -180,31 +185,20 @@ class Runner:
             if final_iteration > 0:
                 self._save_checkpoint(final_iteration)
 
-            # Re-evaluate best program in test mode (authoritative score).
-            best = self._get_best_program()
-            if best:
-                try:
-                    test_result = await self.discovery_controller.evaluator.evaluate_program(
-                        best.solution, best.id, mode="test"
-                    )
-                    for k, v in test_result.metrics.items():
-                        best.metrics[f"test_{k}"] = v
-                    logger.info(
-                        f"Test evaluation for best program: {format_metrics(test_result.metrics)}"
-                    )
-                    # Persist test metrics to disk so they survive the run.
-                    self._save_best_program(best)
-                except Exception as e:
-                    logger.warning(f"Test-mode re-evaluation failed: {e}")
-
         finally:
+            # Stop AI feedback
+            ai_reader = getattr(self, "_ai_feedback_reader", None)
+            if ai_reader:
+                try:
+                    ai_reader.stop()
+                except Exception:
+                    logger.debug("Failed to stop AI feedback reader", exc_info=True)
+
             # Stop the monitor
             early_stopped = (
                 self.discovery_controller is not None
                 and self.discovery_controller.early_stopping_triggered
             )
-            if self.discovery_controller is not None:
-                self.discovery_controller.close()
             self.discovery_controller = None
 
             if monitor_server:
@@ -302,6 +296,12 @@ class Runner:
             callback = create_monitor_callback(server, self.database, time.time())
             self.discovery_controller.monitor_callback = callback
 
+            # HITL: wire bidirectional communication
+            server.set_command_queue(self._hitl_command_queue)
+            server.set_shutdown_event(self.discovery_controller.shutdown_event)
+            self.discovery_controller.set_command_queue(self._hitl_command_queue)
+            self.discovery_controller.set_monitor_server(server)
+
             url = f"http://localhost:{server.port}/"
             print(f"\n  Live monitor: {url}\n", flush=True)
             logger.info(f"Live monitor: {url}")
@@ -327,6 +327,79 @@ class Runner:
             logger.info(f"Human feedback: {path}")
         except Exception as e:
             logger.warning(f"Failed to set up human feedback: {e}")
+
+    def _setup_ai_feedback(self) -> None:
+        """Set up AI-in-the-loop autonomous feedback if configured."""
+        if not self.config.ai_feedback.enabled:
+            return
+        try:
+            from skydiscover.context_builder.ai_feedback import AIFeedbackReader
+            from skydiscover.extras.monitor.llm_utils import call_llm_api
+
+            # Extract problem description for the AI analyser
+            problem_desc = ""
+            if self.config.ai_feedback.include_problem_description:
+                problem_desc = self.config.context_builder.system_message or ""
+
+            reader = AIFeedbackReader(
+                config=self.config.ai_feedback,
+                call_llm_fn=call_llm_api,
+                problem_description=problem_desc,
+            )
+            self.discovery_controller.ai_feedback_reader = reader
+            self._ai_feedback_reader = reader
+
+            # Wire to monitor server so the dashboard can display AI feedback
+            ms = getattr(self.discovery_controller, "_monitor_server", None)
+            if ms and hasattr(ms, "set_ai_feedback_reader"):
+                ms.set_ai_feedback_reader(reader)
+                logger.info("AI feedback reader attached to monitor server")
+
+            # Augment monitor callback to trigger AI analysis
+            original_cb = self.discovery_controller.monitor_callback
+
+            min_pop = self.config.ai_feedback.min_population
+            database = self.database
+
+            def _ai_augmented_callback(program, iteration, result=None):
+                # Fire original callback first (monitor dashboard)
+                if original_cb:
+                    try:
+                        original_cb(program, iteration, result)
+                    except Exception:
+                        logger.debug("Original monitor callback error", exc_info=True)
+
+                # Trigger AI analysis (stats snapshot on main thread)
+                pop_size = len(database.programs)
+                logger.info(
+                    "AI feedback callback: iter=%d, pop=%d, min_pop=%d",
+                    iteration, pop_size, min_pop,
+                )
+                if pop_size >= min_pop:
+                    try:
+                        stats = database.get_statistics(num_recent_iterations=30, k=5)
+                        stats.pop("previous_programs", None)  # strip full Program objects
+                        best = database.get_best_program()
+                        best_score = (
+                            best.metrics.get("combined_score", 0) if best and best.metrics else 0
+                        )
+                        logger.info(
+                            "AI feedback: calling maybe_trigger(iter=%d, best=%.4f)",
+                            iteration, best_score,
+                        )
+                        reader.maybe_trigger(stats, iteration, best_score)
+                    except Exception as exc:
+                        logger.warning("AI feedback trigger error: %s", exc, exc_info=True)
+
+            self.discovery_controller.monitor_callback = _ai_augmented_callback
+            self._ai_feedback_reader = reader
+            logger.info(
+                "AI feedback enabled (model=%s, interval=%d)",
+                self.config.ai_feedback.model,
+                self.config.ai_feedback.interval,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to set up AI feedback: {e}")
 
     def _setup_monitor_summary(self, monitor_server) -> None:
         if not (monitor_server and self.config.monitor.summary_model):
