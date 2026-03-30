@@ -78,6 +78,7 @@ class AIFeedbackReader:
         # Feedback state (rolling buffer -- latest analysis only)
         self._active_feedback: str = ""
         self._pending_feedback: Optional[str] = None
+        self._latest_artifact_summary: str = ""
 
         # Guardrail state
         self._last_analysis_iter: int = -999
@@ -184,6 +185,7 @@ class AIFeedbackReader:
         with self._lock:
             return {
                 "active_feedback": self._active_feedback,
+                "artifact_summary": getattr(self, "_latest_artifact_summary", ""),
                 "cost_spent": self._cost_spent,
                 "budget_max": self._config.max_cost_dollars,
                 "budget_exhausted": self._budget_exhausted,
@@ -335,6 +337,12 @@ class AIFeedbackReader:
     def _build_context(self, stats: dict, iteration: int) -> str:
         """Build a human-readable context string from database statistics."""
         parts = [f"=== Discovery State at Iteration {iteration} ==="]
+        latest_artifact_summary = stats.get("latest_artifact_summary", "")
+        if latest_artifact_summary and self._config.include_artifact_summary:
+            latest_artifact_summary = str(latest_artifact_summary)[: self._config.max_artifact_summary_chars]
+            parts.append(f"Latest evaluator artifact summary:\n{latest_artifact_summary}")
+            with self._lock:
+                self._latest_artifact_summary = latest_artifact_summary
 
         # Score distribution
         score_summary = stats.get("solution_score_summary", {})

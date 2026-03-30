@@ -54,3 +54,6 @@ tests/**/test_outputs_*/
 
 # Local documentation
 tasks/
+benchmarks/multiagent/terminal_bench/tasksets/
+nohup.out
+outputs/

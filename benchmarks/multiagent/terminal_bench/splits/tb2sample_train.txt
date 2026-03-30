@@ -1,0 +1,6 @@
+build-cython-ext
+log-summary-date-ranges
+polyglot-c-py
+qemu-alpine-ssh
+qemu-startup
+sqlite-with-gcov

@@ -12,6 +12,11 @@ _OPENAI_DEFAULT_API_BASE: str = next(
 )
 
 
+@pytest.fixture
+def anyio_backend():
+    return "asyncio"
+
+
 class TestLLMConfigDefaults:
     def test_default_temperature(self):
         cfg = LLMConfig(name="test-model")
@@ -82,7 +87,7 @@ class TestOpenAILLMParams:
             llm = OpenAILLM(cfg)
         return llm
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_params_include_temperature_and_top_p(self):
         llm = self._make_llm(temperature=0.5, top_p=0.9)
         llm._call_api = AsyncMock(return_value="response")
@@ -96,7 +101,7 @@ class TestOpenAILLMParams:
         assert params["temperature"] == 0.5
         assert params["top_p"] == 0.9
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_params_exclude_none_top_p(self):
         llm = self._make_llm(top_p=None)
         llm._call_api = AsyncMock(return_value="response")
@@ -105,7 +110,7 @@ class TestOpenAILLMParams:
         assert "top_p" not in params
         assert "temperature" in params
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_params_exclude_none_temperature(self):
         llm = self._make_llm(temperature=None)
         llm._call_api = AsyncMock(return_value="response")
@@ -114,7 +119,7 @@ class TestOpenAILLMParams:
         assert "temperature" not in params
         assert "top_p" in params
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_params_exclude_both_none(self):
         llm = self._make_llm(temperature=None, top_p=None)
         llm._call_api = AsyncMock(return_value="response")

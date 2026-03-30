@@ -227,6 +227,26 @@ class TestReadReward:
         assert result.metrics["combined_score"] == 0.9
         assert result.metrics["time_ms"] == 123.0
 
+    def test_reads_reward_json_preserves_non_numeric_fields_as_artifacts(self):
+        inst = self._make_inst()
+        payload = json.dumps(
+            {
+                "reward": 0.9,
+                "time_ms": 123,
+                "feedback": "timed out on verifier",
+                "failure_taxonomy": {"timeout": 1},
+            }
+        )
+        with patch("subprocess.run", side_effect=_mock_docker_exec({
+            "/logs/verifier/reward.json": (0, payload),
+        })):
+            result = inst._read_reward()
+        assert result.metrics["combined_score"] == 0.9
+        assert result.metrics["time_ms"] == 123.0
+        assert result.artifacts["feedback"] == "timed out on verifier"
+        assert result.artifacts["failure_taxonomy"] == {"timeout": 1}
+        assert "reward_payload" in result.artifacts
+
     def test_reads_reward_json_with_score_key(self):
         inst = self._make_inst()
         payload = json.dumps({"score": 0.5})

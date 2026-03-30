@@ -1,0 +1,6 @@
+compile-compcert
+llm-inference-batching-scheduler
+mcmc-sampling-stan
+path-tracing
+reshard-c4-data
+sam-cell-seg

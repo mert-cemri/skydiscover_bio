@@ -25,6 +25,7 @@ from skydiscover.llm.base import LLMResponse
 from skydiscover.llm.llm_pool import LLMPool
 from skydiscover.search.base_database import Program, ProgramDatabase
 from skydiscover.search.utils.discovery_utils import SerializableResult, build_image_content
+from skydiscover.context_builder.utils import summarize_artifacts, summarize_program_artifacts
 from skydiscover.utils.code_utils import (
     apply_diff,
     extract_diffs,
@@ -628,6 +629,7 @@ class DiscoveryController:
                     prompt = self.ai_feedback_reader.apply_feedback(prompt)
 
                 try:
+                    llm_start = time.time()
                     if self.config.language == "image":
                         child_id = str(uuid.uuid4())
                         user_content = build_image_content(
@@ -769,6 +771,20 @@ class DiscoveryController:
                         {
                             "solution": child_solution,
                             "metrics": child_metrics,
+                            "artifacts": child_eval_result.artifacts,
+                            "artifact_summary": summarize_artifacts(
+                                child_eval_result.artifacts,
+                                max_chars=getattr(
+                                    self.config.context_builder,
+                                    "failed_attempt_artifact_summary_max_chars",
+                                    800,
+                                ),
+                                max_keys=getattr(
+                                    self.config.context_builder,
+                                    "artifact_summary_max_keys",
+                                    6,
+                                ),
+                            ),
                             "metadata": {
                                 "changes": changes_summary,
                                 "parent_metrics": parent.metrics,
@@ -870,6 +886,11 @@ class DiscoveryController:
         # Build context with parent program and any other relevant information
         context = {
             "program_metrics": parent.metrics,
+            "program_artifact_summary": summarize_program_artifacts(
+                parent,
+                max_chars=getattr(self.config.context_builder, "artifact_summary_max_chars", 1500),
+                max_keys=getattr(self.config.context_builder, "artifact_summary_max_keys", 6),
+            ),
             "other_context_programs": context_programs,
             "previous_programs": db_stats.get("previous_programs", []),
             "db_stats": db_stats,
@@ -1043,6 +1064,18 @@ class DiscoveryController:
                 self.monitor_callback(child_program, iteration)
             except Exception:
                 logger.debug("Monitor callback error", exc_info=True)
+
+        if self.feedback_reader and hasattr(self.feedback_reader, "set_artifact_summary"):
+            try:
+                self.feedback_reader.set_artifact_summary(
+                    summarize_program_artifacts(
+                        child_program,
+                        max_chars=getattr(self.config.context_builder, "artifact_summary_max_chars", 1500),
+                        max_keys=getattr(self.config.context_builder, "artifact_summary_max_keys", 6),
+                    )
+                )
+            except Exception:
+                logger.debug("Failed to update human artifact summary", exc_info=True)
 
         if result.prompt:
             self.database.log_prompt(

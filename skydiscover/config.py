@@ -110,6 +110,10 @@ class ContextBuilderConfig:
     evaluator_system_message: str = "evaluator_system_message"
 
     suggest_simplification_after_chars: Optional[int] = 500
+    include_artifact_summaries: bool = True
+    artifact_summary_max_chars: int = 1500
+    artifact_summary_max_keys: int = 6
+    failed_attempt_artifact_summary_max_chars: int = 800
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -527,6 +531,8 @@ class MonitorConfig:
     summary_api_base: str = _PROVIDERS["openai"][0]
     summary_top_k: int = 3
     summary_interval: int = 0  # Auto-generate every N programs (0 = manual)
+    artifact_summary_max_chars: int = 600
+    artifact_summary_max_keys: int = 5
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -560,6 +566,8 @@ class AIFeedbackConfig:
 
     # Context
     include_problem_description: bool = True  # Include system message in AI prompt
+    include_artifact_summary: bool = True
+    max_artifact_summary_chars: int = 1200
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -738,6 +746,11 @@ class Config:
                 "template_dir": self.context_builder.template_dir,
                 "system_message": self.context_builder.system_message,
                 "evaluator_system_message": self.context_builder.evaluator_system_message,
+                "suggest_simplification_after_chars": self.context_builder.suggest_simplification_after_chars,
+                "include_artifact_summaries": self.context_builder.include_artifact_summaries,
+                "artifact_summary_max_chars": self.context_builder.artifact_summary_max_chars,
+                "artifact_summary_max_keys": self.context_builder.artifact_summary_max_keys,
+                "failed_attempt_artifact_summary_max_chars": self.context_builder.failed_attempt_artifact_summary_max_chars,
             },
             "search": {
                 "type": self.search.type,
@@ -783,6 +796,8 @@ class Config:
                 "summary_model": self.monitor.summary_model,
                 "summary_top_k": self.monitor.summary_top_k,
                 "summary_interval": self.monitor.summary_interval,
+                "artifact_summary_max_chars": self.monitor.artifact_summary_max_chars,
+                "artifact_summary_max_keys": self.monitor.artifact_summary_max_keys,
             },
             # AI-in-the-loop
             "ai_feedback": {
@@ -796,6 +811,8 @@ class Config:
                 "api_timeout_seconds": self.ai_feedback.api_timeout_seconds,
                 "auto_clear_after": self.ai_feedback.auto_clear_after,
                 "include_problem_description": self.ai_feedback.include_problem_description,
+                "include_artifact_summary": self.ai_feedback.include_artifact_summary,
+                "max_artifact_summary_chars": self.ai_feedback.max_artifact_summary_chars,
             },
             # Human-in-the-loop
             "human_feedback_enabled": self.human_feedback_enabled,

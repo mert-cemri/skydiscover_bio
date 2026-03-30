@@ -9,6 +9,7 @@ import logging
 import time
 from typing import Any, Callable, Dict, Optional
 
+from skydiscover.context_builder.utils import summarize_program_artifacts
 from skydiscover.extras.monitor.server import MonitorServer
 
 logger = logging.getLogger(__name__)
@@ -122,6 +123,11 @@ def _push_program_event(
         "iteration": iteration,
         "score": score,
         "metrics": _safe_metrics(metrics),
+        "artifact_summary": summarize_program_artifacts(
+            program,
+            max_chars=getattr(server, "artifact_summary_max_chars", 600),
+            max_keys=getattr(server, "artifact_summary_max_keys", 5),
+        ),
         "parent_id": parent_id,
         "parent_score": parent_score,
         "parent_iter": parent_iter,
@@ -201,6 +207,11 @@ def create_external_callback(
                 "iteration": iteration,
                 "score": score,
                 "metrics": _safe_metrics(program.metrics or {}),
+                "artifact_summary": summarize_program_artifacts(
+                    program,
+                    max_chars=getattr(server, "artifact_summary_max_chars", 600),
+                    max_keys=getattr(server, "artifact_summary_max_keys", 5),
+                ),
                 "parent_id": parent_id,
                 "parent_score": parent_score,
                 "parent_iter": None,

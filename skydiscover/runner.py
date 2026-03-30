@@ -17,6 +17,7 @@ from skydiscover.search.default_discovery_controller import (
 from skydiscover.search.registry import create_database, get_program
 from skydiscover.search.route import get_discovery_controller
 from skydiscover.search.utils.logging_utils import setup_search_logging
+from skydiscover.context_builder.utils import summarize_program_artifacts
 from skydiscover.utils.code_utils import extract_solution_language
 from skydiscover.utils.metrics import format_metrics, get_score
 
@@ -290,6 +291,8 @@ class Runner:
                 port=self.config.monitor.port,
                 max_solution_length=self.config.monitor.max_solution_length,
             )
+            server.artifact_summary_max_chars = self.config.monitor.artifact_summary_max_chars
+            server.artifact_summary_max_keys = self.config.monitor.artifact_summary_max_keys
             server.set_config_summary(f"{self.name} | max_iter={max_iterations}")
             server.start()
 
@@ -379,6 +382,11 @@ class Runner:
                     try:
                         stats = database.get_statistics(num_recent_iterations=30, k=5)
                         stats.pop("previous_programs", None)  # strip full Program objects
+                        stats["latest_artifact_summary"] = summarize_program_artifacts(
+                            program,
+                            max_chars=self.config.ai_feedback.max_artifact_summary_chars,
+                            max_keys=getattr(self.config.context_builder, "artifact_summary_max_keys", 6),
+                        )
                         best = database.get_best_program()
                         best_score = (
                             best.metrics.get("combined_score", 0) if best and best.metrics else 0

@@ -215,7 +215,10 @@ class Evaluator:
             return EvaluationResult.from_dict(result)
 
         logger.warning(f"Unexpected result type: {type(result)}")
-        return EvaluationResult(metrics={"error": 0.0})
+        return EvaluationResult(
+            metrics={"error": 0.0},
+            artifacts={"normalization_error": f"Unexpected result type: {type(result)}"},
+        )
 
     async def _cascade_evaluate(self, program_path: str) -> EvaluationResult:
         """Run cascade evaluation: stage1 → threshold check → stage2 → merge."""

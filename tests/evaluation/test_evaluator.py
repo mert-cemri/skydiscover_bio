@@ -22,6 +22,19 @@ class TestNormalizeResult:
         assert isinstance(result, EvaluationResult)
         assert result.metrics == {"accuracy": 0.9, "speed": 0.8}
 
+    def test_dict_with_artifacts_preserved(self):
+        inst = _make_evaluator()
+        result = inst._normalize_result(
+            {
+                "metrics": {"accuracy": 0.9},
+                "artifacts": {"feedback": "wrong file target"},
+                "failure_taxonomy": {"task_failure": 1},
+            }
+        )
+        assert result.metrics == {"accuracy": 0.9}
+        assert result.artifacts["feedback"] == "wrong file target"
+        assert result.artifacts["failure_taxonomy"] == {"task_failure": 1}
+
     def test_unexpected_type_returns_error(self):
         inst = _make_evaluator()
         result = inst._normalize_result("unexpected string")

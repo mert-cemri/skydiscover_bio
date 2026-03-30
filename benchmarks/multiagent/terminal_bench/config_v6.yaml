@@ -1,38 +1,17 @@
 # Native-tool terminal scaffold optimization with Harbor-backed evaluation.
 #
-# The seed program keeps the runtime contract fixed but exposes nearly the full
-# harness policy inside EVOLVE-BLOCK:
-#   - tool schemas and prompting strategy
-#   - verification state and completion policy
-#   - memory structure and summarization
-#   - interactive shell action discipline
-#   - single-agent vs two-phase seed profile
-#
-# Evaluation protocol:
-#   - Stage1 smoke gate: bundled Harbor-format mini-suite in tasks/train
-#   - Real optimization: materialized terminal-bench-sample@2.0 with
-#     TBENCH_SPLIT_PROFILE=tb2sample
-#   - Final held-out evaluation: official full TB2 task root only
+# config_v6.yaml: Same as config.yaml but with monitor port 8891
+# Used for v6 run (tb2_harbor_wrapped with tb2sample split, 6 easier TB2 tasks)
 #
 # Usage:
-#   SOLVER_MODEL=gpt-4o-mini TRAIN_TASKS=3 \
-#   uv run skydiscover-run \
-#     benchmarks/multiagent/terminal_bench/initial_program.py \
-#     benchmarks/multiagent/terminal_bench/evaluator.py \
-#     --config benchmarks/multiagent/terminal_bench/config.yaml
-#
-# Harbor sample train/dev regime:
-#   uv run python benchmarks/multiagent/terminal_bench/fetch_terminal_bench_sample.py
-#   TBENCH_TASK_ROOT=benchmarks/multiagent/terminal_bench/tasksets/terminal-bench-sample-2.0 \
+#   SOLVER_MODEL=gpt-4o-mini TRAIN_TASKS=6 \
+#   TBENCH_TASK_ROOT=/home/mertcemri/tb2_harbor_wrapped \
 #   TBENCH_SPLIT_PROFILE=tb2sample \
+#   TBENCH_MAX_TASK_TIMEOUT=300 \
 #   uv run skydiscover-run \
 #     benchmarks/multiagent/terminal_bench/initial_program.py \
 #     benchmarks/multiagent/terminal_bench/evaluator.py \
-#     --config benchmarks/multiagent/terminal_bench/config.yaml
-#
-# Final official TB2 held-out evaluation:
-#   python benchmarks/multiagent/terminal_bench/evaluator.py \
-#     --test outputs/.../best/best_program.py
+#     --config benchmarks/multiagent/terminal_bench/config_v6.yaml
 
 language: python
 diff_based_generation: true
@@ -158,4 +137,4 @@ ai_feedback:
 
 monitor:
   enabled: true
-  port: 8889
+  port: 8891

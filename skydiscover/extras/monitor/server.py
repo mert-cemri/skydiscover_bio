@@ -259,6 +259,7 @@ class MonitorServer:
             "feedback_active": bool(text),
             "human_feedback_mode": self._feedback_reader.mode,
             "human_feedback_current_prompt": self._feedback_reader.get_current_prompt(),
+            "human_feedback_artifact_summary": getattr(self._feedback_reader, "_artifact_summary", {}),
             "human_feedback_history": self._feedback_reader.get_history(),
         }
 
@@ -280,6 +281,7 @@ class MonitorServer:
             "ai_feedback_enabled": True,
             "ai_feedback_text": text,
             "ai_feedback_active": bool(text),
+            "ai_feedback_artifact_summary": state.get("artifact_summary", ""),
             "ai_cost_spent": round(state["cost_spent"], 4),
             "ai_budget_max": state["budget_max"],
             "ai_budget_exhausted": state["budget_exhausted"],

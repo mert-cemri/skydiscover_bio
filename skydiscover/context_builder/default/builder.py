@@ -27,7 +27,14 @@ from typing import Any, Dict, List, Optional, Union
 
 from skydiscover.config import Config
 from skydiscover.context_builder.base import ContextBuilder
-from skydiscover.context_builder.utils import TemplateManager, format_artifacts, prog_attr
+from skydiscover.context_builder.utils import (
+    TemplateManager,
+    format_artifact_summary,
+    format_artifacts,
+    prog_attr,
+    summarize_artifacts,
+    summarize_program_artifacts,
+)
 from skydiscover.search.base_database import Program
 
 logger = logging.getLogger(__name__)
@@ -223,6 +230,15 @@ class DefaultContextBuilder(ContextBuilder):
             lines.append(f"\n```{language}\n{solution}\n```\n")
 
         feedback_section = format_artifacts(program, heading="##")
+        if self.context_config.include_artifact_summaries:
+            artifact_summary = summarize_program_artifacts(
+                program,
+                max_chars=self.context_config.artifact_summary_max_chars,
+                max_keys=self.context_config.artifact_summary_max_keys,
+            )
+            summary_section = format_artifact_summary(artifact_summary, heading="##")
+            if summary_section:
+                lines.append(summary_section)
         if feedback_section:
             lines.append(feedback_section)
 
@@ -309,6 +325,15 @@ class DefaultContextBuilder(ContextBuilder):
 
         if language != "image":
             lines.append(f"\n```{language}\n{solution}\n```\n")
+        if self.context_config.include_artifact_summaries:
+            artifact_summary = summarize_program_artifacts(
+                program,
+                max_chars=self.context_config.artifact_summary_max_chars,
+                max_keys=self.context_config.artifact_summary_max_keys,
+            )
+            summary_section = format_artifact_summary(artifact_summary, heading="####")
+            if summary_section:
+                lines.append(summary_section)
         lines.append("\n")
 
     def _format_other_context_programs(
@@ -371,6 +396,15 @@ class DefaultContextBuilder(ContextBuilder):
                     lines.append(f"**Traceback:**\n```\n{traceback_str}\n```\n\n")
                 else:
                     lines.append("\n")
+            if self.context_config.include_artifact_summaries:
+                artifact_summary = attempt.get("artifact_summary") or summarize_artifacts(
+                    attempt.get("artifacts", {}) or {},
+                    max_chars=self.context_config.failed_attempt_artifact_summary_max_chars,
+                    max_keys=self.context_config.artifact_summary_max_keys,
+                )
+                summary_section = format_artifact_summary(artifact_summary, heading="####")
+                if summary_section:
+                    lines.append(summary_section)
         return "".join(lines)
 
     def _format_previous_attempts(

@@ -102,6 +102,7 @@ skydiscover-viewer = "skydiscover.extras.monitor.viewer:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration tests requiring external services"

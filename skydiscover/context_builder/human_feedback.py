@@ -11,6 +11,7 @@ import os
 import tempfile
 import threading
 import time as _time
+from typing import Any, Dict
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,7 @@ class HumanFeedbackReader:
         self.mode = mode if mode in ("append", "replace") else "append"
         self._last_content: str = ""
         self._current_system_prompt: str = ""
+        self._artifact_summary: Dict[str, Any] = {}
         self._history: list = []
         self._file_lock = threading.Lock()
         self._create_initial_file()
@@ -129,7 +131,19 @@ class HumanFeedbackReader:
 
     def get_current_prompt(self) -> str:
         """Return the current system prompt."""
-        return self._current_system_prompt
+        if not self._artifact_summary:
+            return self._current_system_prompt
+        artifact_text = "\n".join(
+            [
+                "## Latest Evaluator Artifact Summary",
+                *(f"- {k}: {v}" for k, v in self._artifact_summary.items() if v),
+            ]
+        )
+        return f"{self._current_system_prompt}\n\n{artifact_text}".strip()
+
+    def set_artifact_summary(self, artifact_summary: Dict[str, Any]) -> None:
+        """Store the latest evaluator artifact summary for dashboard visibility."""
+        self._artifact_summary = dict(artifact_summary or {})
 
     def log_usage(self, iteration: int, feedback_text: str, mode: str) -> None:
         """Record that feedback was applied at a given iteration."""
@@ -155,6 +169,7 @@ class HumanFeedbackReader:
             "feedback_text": self._last_content,
             "mode": self.mode,
             "current_prompt": self._current_system_prompt,
+            "artifact_summary": dict(self._artifact_summary),
         }
 
     def _write_feedback(self, text: str) -> None:

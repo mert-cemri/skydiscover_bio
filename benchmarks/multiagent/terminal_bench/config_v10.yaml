@@ -1,41 +1,9 @@
-# Native-tool terminal scaffold optimization with Harbor-backed evaluation.
-#
-# The seed program keeps the runtime contract fixed but exposes nearly the full
-# harness policy inside EVOLVE-BLOCK:
-#   - tool schemas and prompting strategy
-#   - verification state and completion policy
-#   - memory structure and summarization
-#   - interactive shell action discipline
-#   - single-agent vs two-phase seed profile
-#
-# Evaluation protocol:
-#   - Stage1 smoke gate: bundled Harbor-format mini-suite in tasks/train
-#   - Real optimization: materialized terminal-bench-sample@2.0 with
-#     TBENCH_SPLIT_PROFILE=tb2sample
-#   - Final held-out evaluation: official full TB2 task root only
-#
-# Usage:
-#   SOLVER_MODEL=gpt-4o-mini TRAIN_TASKS=3 \
-#   uv run skydiscover-run \
-#     benchmarks/multiagent/terminal_bench/initial_program.py \
-#     benchmarks/multiagent/terminal_bench/evaluator.py \
-#     --config benchmarks/multiagent/terminal_bench/config.yaml
-#
-# Harbor sample train/dev regime:
-#   uv run python benchmarks/multiagent/terminal_bench/fetch_terminal_bench_sample.py
-#   TBENCH_TASK_ROOT=benchmarks/multiagent/terminal_bench/tasksets/terminal-bench-sample-2.0 \
-#   TBENCH_SPLIT_PROFILE=tb2sample \
-#   uv run skydiscover-run \
-#     benchmarks/multiagent/terminal_bench/initial_program.py \
-#     benchmarks/multiagent/terminal_bench/evaluator.py \
-#     --config benchmarks/multiagent/terminal_bench/config.yaml
-#
-# Final official TB2 held-out evaluation:
-#   python benchmarks/multiagent/terminal_bench/evaluator.py \
-#     --test outputs/.../best/best_program.py
+# config_v10.yaml: v8b best seed with manual fixes, TB2 balanced, diff=false
+# Key changes from v7: higher evaluator timeout (3000), port 8894, 75 iterations
+# Seed improvements: MAX_GLOBAL_TURNS=32, expanded ACCEPTANCE_PLAYBOOK, no BANNED_VERIFY
 
 language: python
-diff_based_generation: true
+diff_based_generation: false
 max_iterations: 75
 checkpoint_interval: 5
 max_solution_length: 60000
@@ -45,7 +13,7 @@ llm:
   models:
     - name: "gpt-5.2"
       weight: 1.0
-  max_tokens: 8192
+  max_tokens: 32768
   timeout: 360
 
 prompt:
@@ -84,42 +52,44 @@ prompt:
     - Completion should be evidence-driven and tied to successful verification since the last mutation.
 
     SCORING:
-    - Primary objective: Harbor task completion rate
+    - Primary objective: Harbor task completion rate (7/10 current best → aim for 9/10)
     - Secondary objective: verified completion quality (`done_signal`)
     - Small efficiency bonus for fewer tool calls
-    - Small penalty for bloated agent counts
     - CRITICAL: held-out test tasks are distinct from train tasks
+
+    FAILURE ANALYSIS FROM TEST SET (use this to guide mutations):
+    - TIMEOUTS: Some tasks need 30+ turns. Current MAX_GLOBAL_TURNS=32.
+    - TASK_FAILURE: Scaffold runs but can't solve. Need better error recovery, re-reading instructions when stuck, trying alternative approaches.
+    - VERIFIER_MISS: Scaffold completes work but can't find verifier. Need more aggressive acceptance-command discovery.
+    - TOOL_ERROR: Malformed tool arguments. Need better arg validation.
+    - SCAFFOLD_CRASH: Runtime errors. Need defensive try/except in main loop.
 
     WHAT TO OPTIMIZE:
     - Tool-calling reliability and action discipline
-    - Acceptance-command discovery and reuse
-    - Verification behavior before completion
-    - Shared memory usefulness
+    - Acceptance-command discovery and reuse (try /app/tests/test.sh, /tests/test.sh, pytest, verify.sh)
+    - Error recovery loops: when a command fails, analyze the error and try a different approach
     - Context compression and recovery on long tasks
-    - Retry and recovery after command failures
-    - Context compression without losing key evidence
-    - Tool choice discipline for long-horizon tasks
+    - Re-read task instructions when stuck after 10+ turns
 
     WHAT GENERALIZES:
     - Evidence-driven execution and verification
     - Native tool use with typed arguments
     - Acceptance-command caching
-    - Minimal but effective state changes
     - Recovery after command failures or partial progress
+    - Defensive error handling everywhere
 
     WHAT DOES NOT GENERALIZE (avoid):
     - Task-specific command recipes baked into prompts
     - Brittle assumptions about one task layout
     - Ending early without explicit verification
-    - Overfitting to easy bundled tasks or ignoring hard TB2-style tasks
 
 search:
   type: "adaevolve"
   num_context_programs: 3
   database:
     population_size: 20
-    num_islands: 2
-    migration_interval: 10
+    num_islands: 3
+    migration_interval: 8
     migration_count: 3
     decay: 0.9
     intensity_min: 0.15
@@ -129,16 +99,16 @@ search:
     novelty_weight: 0.0
     diversity_strategy: "code"
     use_dynamic_islands: true
-    max_islands: 4
+    max_islands: 5
     spawn_stagnation_threshold: 0.02
-    spawn_cooldown_iterations: 15
+    spawn_cooldown_iterations: 12
     use_paradigm_breakthrough: true
-    paradigm_window_size: 10
-    paradigm_improvement_threshold: 0.10
-    paradigm_max_uses: 3
+    paradigm_window_size: 8
+    paradigm_improvement_threshold: 0.08
+    paradigm_max_uses: 4
 
 evaluator:
-  timeout: 2000
+  timeout: 3000
   cascade_evaluation: true
   cascade_thresholds:
     - 0.05
@@ -158,4 +128,4 @@ ai_feedback:
 
 monitor:
   enabled: true
-  port: 8889
+  port: 8894

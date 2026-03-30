@@ -1,0 +1,121 @@
+# EvoX (co-evolutionary) variant of the terminal bench config.
+# Runs alongside config.yaml (adaevolve) in a separate output directory.
+#
+# Key difference: search.type = "evox" uses CoEvolutionController, which
+# co-evolves the scaffold programs AND the search algorithm itself.
+#
+# Usage:
+#   SOLVER_MODEL=gpt-4o-mini TRAIN_TASKS=2 CANDIDATE_TIMEOUT_S=200 \
+#   uv run skydiscover-run \
+#     benchmarks/multiagent/terminal_bench/initial_program.py \
+#     benchmarks/multiagent/terminal_bench/evaluator.py \
+#     --config benchmarks/multiagent/terminal_bench/config_evox.yaml \
+#     --output outputs/terminal_bench_evox
+
+language: python
+diff_based_generation: true
+max_iterations: 50
+checkpoint_interval: 5
+max_solution_length: 60000
+
+llm:
+  api_base: https://api.openai.com/v1
+  models:
+    - name: "gpt-5.2"
+      weight: 1.0
+  guide_models:
+    - name: "gpt-5.2"
+      max_completion_tokens: 8000
+      timeout: 300
+  max_completion_tokens: 8192
+  timeout: 360
+
+prompt:
+  system_message: |
+    You are evolving a Harbor-evaluated multi-agent terminal scaffold.
+
+    ABSOLUTE RULE:
+    - You may ONLY modify code between the markers:
+      # EVOLVE-BLOCK-START
+      ...
+      # EVOLVE-BLOCK-END
+    - Do NOT change any code outside that region.
+
+    You MUST preserve:
+    - call_llm_multi(system, messages) function signature
+    - Tool functions: run_shell, read_file, write_file, list_dir
+    - The run_agentic(task, work_dir) entrypoint
+    - The run_pipeline(task, work_dir) function signature and return format
+
+    You MAY freely change INSIDE the EVOLVE-BLOCK, including:
+    1. Agent roster, count, roles, and per-agent prompts
+    2. Handoff graph, scheduler, and routing policy
+    3. Shared memory structure and summarization
+    4. MAX_GLOBAL_TURNS / COMMAND_TIMEOUT / MAX_CONTEXT_MESSAGES
+    5. Response schema and parse_response()
+    6. Tool permissions and filtering by role
+    7. Observation formatting and truncation
+    8. Retry, reflection, and failure recovery logic
+    9. Completion and verification policy
+    10. The internal run_multiagent_scaffold() logic
+    11. Any helper dataclasses or coordination utilities inside the block
+
+    BENCHMARK CONTRACT:
+    - The scaffold is evaluated on Harbor-format Docker tasks.
+    - Optimize for robust general-purpose terminal problem solving, not task-specific memorization.
+    - The final verifier should only end when the task has actually been checked.
+
+    SCORING:
+    - Primary objective: Harbor task completion rate
+    - Small efficiency bonus for fewer tool calls
+    - Small penalty for bloated agent counts
+    - CRITICAL: held-out test tasks are distinct from train tasks
+
+    WHAT TO OPTIMIZE:
+    - Agent specialization and collaboration quality
+    - Handoff and retry policy
+    - Shared memory usefulness
+    - Parser robustness and actionability
+    - Verification behavior before completion
+    - Context compression without losing key evidence
+    - Tool choice discipline and error recovery
+
+    WHAT GENERALIZES:
+    - Good decomposition across specialists
+    - Clear handoffs with compact shared memory
+    - Evidence-driven execution and verification
+    - Robust parsing under imperfect model outputs
+    - Recovery after command failures or partial progress
+
+    WHAT DOES NOT GENERALIZE (avoid):
+    - Task-specific command recipes baked into prompts
+    - Brittle assumptions about one task layout
+    - Ending early without explicit verification
+    - Overspecializing one agent while the others do nothing
+
+search:
+  type: "evox"
+  num_context_programs: 3
+
+evaluator:
+  timeout: 2000
+  cascade_evaluation: true
+  cascade_thresholds:
+    - 0.05
+    - 0.3
+
+human_feedback_enabled: true
+human_feedback_mode: append
+
+ai_feedback:
+  enabled: true
+  model: gpt-5
+  interval: 5
+  min_population: 5
+  max_cost_dollars: 999999.0
+  auto_clear_after: 15
+  include_problem_description: true
+
+monitor:
+  enabled: true
+  port: 8890

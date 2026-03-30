@@ -292,8 +292,13 @@ class ContainerizedEvaluator:
 
     def _start_container(self) -> str:
         """Start a persistent container and return its ID."""
+        env_args: list[str] = []
+        for key in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "SOLVER_MODEL", "GEMINI_API_KEY"):
+            val = os.environ.get(key)
+            if val:
+                env_args += ["-e", f"{key}={val}"]
         result = subprocess.run(
-            ["docker", "run", "-d", "--rm", "--entrypoint", "sleep", self.image_tag, "infinity"],
+            ["docker", "run", "-d", "--rm", "--entrypoint", "sleep"] + env_args + [self.image_tag, "infinity"],
             capture_output=True,
             text=True,
             check=True,

@@ -38,6 +38,7 @@ logger = logging.getLogger(__name__)
 
 # Most common solution path across Harbor benchmarks — used as fallback.
 _DEFAULT_SOLUTION_PATH = "/app/solution.py"
+_MAX_REWARD_PAYLOAD_CHARS = 4000
 
 
 class HarborEvaluator(ContainerizedEvaluator):
@@ -51,6 +52,9 @@ class HarborEvaluator(ContainerizedEvaluator):
     def __init__(self, benchmark_dir, config, max_concurrent=4):
         self.task_dir = os.path.abspath(benchmark_dir)
         self.solution_path = self._extract_solution_path()
+        scaffold_solution_path = self._extract_scaffold_runner_solution_path()
+        if scaffold_solution_path:
+            self.solution_path = scaffold_solution_path
         self._tests_uploaded = False
         self._apply_task_toml_timeout(config)
         super().__init__(benchmark_dir, config, max_concurrent)
@@ -84,6 +88,10 @@ class HarborEvaluator(ContainerizedEvaluator):
         """Inject solution, run tests, read reward."""
         # Clear stale reward files from previous evaluations.
         self._exec("rm -f /logs/verifier/reward.txt /logs/verifier/reward.json")
+
+        # Reset workspace and /app to fixture state so each evaluation starts clean.
+        self._exec("rm -rf /workspace && mkdir -p /workspace")
+        self._exec("tar xzf /tmp/app_fixture.tar.gz -C / 2>/dev/null || true")
 
         # Ensure parent directory exists and inject solution.
         parent_dir = os.path.dirname(self.solution_path)
@@ -162,7 +170,11 @@ class HarborEvaluator(ContainerizedEvaluator):
                 text = f.read()
             match = re.search(r"timeout_sec\s*=\s*(\d+)", text)
             if match:
-                config.timeout = int(match.group(1))
+                timeout_s = int(match.group(1))
+                max_timeout_raw = os.getenv("TBENCH_MAX_TASK_TIMEOUT", "").strip()
+                if max_timeout_raw.isdigit() and int(max_timeout_raw) > 0:
+                    timeout_s = min(timeout_s, int(max_timeout_raw))
+                config.timeout = timeout_s
                 logger.info(f"Harbor task.toml: set evaluator timeout to {config.timeout}s")
         except Exception as e:
             logger.warning(f"Failed to read task.toml: {e}")
@@ -170,6 +182,9 @@ class HarborEvaluator(ContainerizedEvaluator):
     def _init_container(self):
         """Create log directories and upload test files into the container."""
         self._exec("mkdir -p /logs/verifier /logs/agent /logs/artifacts")
+
+        # Snapshot /app after Dockerfile setup so we can reset it before each eval.
+        self._exec("tar czf /tmp/app_fixture.tar.gz -C / app 2>/dev/null || true")
 
         # Upload the tests/ directory.
         tests_dir = os.path.join(self.task_dir, "tests")
@@ -184,6 +199,17 @@ class HarborEvaluator(ContainerizedEvaluator):
             logger.debug("Uploaded tests/ to container")
         else:
             raise RuntimeError(f"No tests/ directory found in {self.task_dir}")
+
+        # Upload instruction.md so test.sh can read it at /task/instruction.md
+        instruction_file = os.path.join(self.task_dir, "instruction.md")
+        if os.path.exists(instruction_file):
+            self._exec("mkdir -p /task")
+            subprocess.run(
+                ["docker", "cp", instruction_file, f"{self.container_id}:/task/instruction.md"],
+                capture_output=True,
+                check=True,
+            )
+            logger.debug("Uploaded instruction.md to /task/instruction.md")
 
     def _read_reward(self, test_stdout: str = "", test_stderr: str = "") -> EvaluationResult:
         """Read the reward from /logs/verifier/reward.txt or reward.json."""
@@ -211,16 +237,29 @@ class HarborEvaluator(ContainerizedEvaluator):
                         raw = 0
                     reward = float(raw)
                     metrics = {"combined_score": reward}
+                    artifacts = {}
                     for k, v in data.items():
                         if isinstance(v, (int, float)) and k not in (
                             "reward",
                             "score",
                         ):
                             metrics[k] = float(v)
-                    return EvaluationResult(metrics=metrics)
+                        elif k not in ("reward", "score"):
+                            artifacts[k] = v
+                    if artifacts:
+                        artifacts.setdefault(
+                            "reward_payload",
+                            proc.stdout.strip()[:_MAX_REWARD_PAYLOAD_CHARS],
+                        )
+                    return EvaluationResult(metrics=metrics, artifacts=artifacts)
                 else:
                     reward = float(proc.stdout.strip())
-                    return EvaluationResult(metrics={"combined_score": reward})
+                    return EvaluationResult(
+                        metrics={"combined_score": reward},
+                        artifacts={
+                            "reward_payload": proc.stdout.strip()[:_MAX_REWARD_PAYLOAD_CHARS]
+                        },
+                    )
             except (ValueError, json.JSONDecodeError, StopIteration) as e:
                 logger.warning(f"Failed to parse reward from {path}: {e}")
                 continue
@@ -264,6 +303,36 @@ class HarborEvaluator(ContainerizedEvaluator):
         logger.warning(f"Could not extract solution path, using default: {_DEFAULT_SOLUTION_PATH}")
         return _DEFAULT_SOLUTION_PATH
 
+    def _extract_scaffold_runner_solution_path(self) -> str:
+        """Detect explicit scaffold runner import path from tests/test.sh."""
+        test_sh = os.path.join(self.task_dir, "tests", "test.sh")
+        if not os.path.exists(test_sh):
+            return ""
+        try:
+            with open(test_sh) as f:
+                text = f.read()
+        except Exception:
+            return ""
+        match = re.search(
+            r'spec_from_file_location\(\s*["\']solution["\']\s*,\s*["\'](/[^"\']+)["\']\s*\)',
+            text,
+        )
+        if not match:
+            return ""
+        path = self._sanitize_candidate_path(match.group(1))
+        if path:
+            logger.info(f"Using scaffold runner solution path from tests/test.sh: {path}")
+        return path
+
+    def _sanitize_candidate_path(self, path: str) -> str:
+        cleaned = (path or "").strip().strip("`'\"")
+        # Reject shell fragments and unresolved variables from solve.sh parsing.
+        if not cleaned.startswith("/"):
+            return ""
+        if "$" in cleaned or any(ch in cleaned for ch in (";", "|", "\n", "\r")):
+            return ""
+        return cleaned
+
     def _extract_path_from_solve_sh(self) -> str:
         """Extract the solution target path from ``solution/solve.sh``.
 
@@ -290,7 +359,7 @@ class HarborEvaluator(ContainerizedEvaluator):
         ]:
             match = re.search(pattern, text)
             if match:
-                return match.group(1)
+                return self._sanitize_candidate_path(match.group(1))
 
         # Second try: relative path redirect (e.g. crustbench writes to
         # src/interfaces/base122.rs after cd-ing into a project directory).
@@ -325,7 +394,7 @@ class HarborEvaluator(ContainerizedEvaluator):
                     except Exception:
                         pass
 
-            return os.path.join(base, rel_path)
+            return self._sanitize_candidate_path(os.path.join(base, rel_path))
 
         return ""
 
@@ -348,7 +417,7 @@ class HarborEvaluator(ContainerizedEvaluator):
         for pattern in patterns:
             match = re.search(pattern, text)
             if match:
-                return match.group(1)
+                return self._sanitize_candidate_path(match.group(1))
 
         return ""
 
