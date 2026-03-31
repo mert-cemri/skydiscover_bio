@@ -6,14 +6,125 @@ picked up automatically.
 """
 
 import asyncio
+import json
 import logging
 import os
 from typing import Optional
 
 from skydiscover.api import DiscoveryResult
 from skydiscover.config import Config
+from skydiscover.extras.external.cost_utils import (
+    append_cost_event,
+    build_cost_event,
+    load_cost_events,
+    make_llm_cost_summary,
+)
 
 logger = logging.getLogger(__name__)
+
+
+_ORIGINAL_OE_CALL_API = None
+
+
+def _install_openevolve_openai_cost_tracking(cost_log_path: str) -> None:
+    """Patch OpenEvolve's OpenAI client wrapper to log per-call usage."""
+    global _ORIGINAL_OE_CALL_API
+
+    from openevolve.llm.openai import OpenAILLM
+
+    if getattr(OpenAILLM, "_skydiscover_cost_tracking_enabled", False):
+        OpenAILLM._skydiscover_cost_log_path = cost_log_path
+        return
+
+    _ORIGINAL_OE_CALL_API = OpenAILLM._call_api
+
+    async def _tracked_call_api(self, params):
+        if self.client is None:
+            raise RuntimeError("OpenAI client is not initialized (manual_mode enabled?)")
+
+        loop = asyncio.get_running_loop()
+        response = await loop.run_in_executor(
+            None, lambda: self.client.chat.completions.create(**params)
+        )
+        event = build_cost_event(
+            model_name=str(getattr(response, "model", None) or self.model or ""),
+            usage=getattr(response, "usage", None),
+            usage_category=getattr(self, "_skydiscover_usage_category", "generation"),
+        )
+        append_cost_event(OpenAILLM._skydiscover_cost_log_path, event)
+        return response.choices[0].message.content
+
+    OpenAILLM._call_api = _tracked_call_api
+    OpenAILLM._skydiscover_cost_tracking_enabled = True
+    OpenAILLM._skydiscover_cost_log_path = cost_log_path
+
+
+def _restore_openevolve_openai_cost_tracking() -> None:
+    """Restore OpenEvolve's original OpenAI wrapper."""
+    global _ORIGINAL_OE_CALL_API
+
+    from openevolve.llm.openai import OpenAILLM
+
+    if _ORIGINAL_OE_CALL_API is not None:
+        OpenAILLM._call_api = _ORIGINAL_OE_CALL_API
+        _ORIGINAL_OE_CALL_API = None
+    OpenAILLM._skydiscover_cost_tracking_enabled = False
+
+
+def _openevolve_worker_init_with_cost_tracking(
+    config_dict: dict,
+    evaluation_file: str,
+    parent_env: dict | None = None,
+    cost_log_path: str | None = None,
+) -> None:
+    """Worker initializer that installs OpenEvolve cost tracking inside spawned processes."""
+    from openevolve.process_parallel import _worker_init
+
+    _worker_init(config_dict, evaluation_file, parent_env)
+    if cost_log_path:
+        _install_openevolve_openai_cost_tracking(cost_log_path)
+
+
+def _build_cost_tracking_parallel_controller(cost_log_path: str):
+    """Create a ProcessParallelController subclass with worker-side cost tracking."""
+    import multiprocessing as mp
+    import os
+    import sys
+    from concurrent.futures import ProcessPoolExecutor
+
+    from openevolve.process_parallel import ProcessParallelController
+
+    class CostTrackingProcessParallelController(ProcessParallelController):
+        _skydiscover_cost_log_path = cost_log_path
+
+        def start(self) -> None:
+            config_dict = self._serialize_config(self.config)
+            current_env = dict(os.environ)
+
+            executor_kwargs = {
+                "max_workers": self.num_workers,
+                "initializer": _openevolve_worker_init_with_cost_tracking,
+                "initargs": (
+                    config_dict,
+                    self.evaluation_file,
+                    current_env,
+                    self._skydiscover_cost_log_path,
+                ),
+            }
+            if sys.version_info >= (3, 11):
+                logger.info(f"Set max {self.config.max_tasks_per_child} tasks per child")
+                executor_kwargs["max_tasks_per_child"] = self.config.max_tasks_per_child
+            elif self.config.max_tasks_per_child is not None:
+                logger.warning(
+                    "max_tasks_per_child is only supported in Python 3.11+. "
+                    "Ignoring max_tasks_per_child and using spawn start method."
+                )
+                executor_kwargs["mp_context"] = mp.get_context("spawn")
+
+            self.executor = ProcessPoolExecutor(**executor_kwargs)
+            logger.info(f"Started process pool with {self.num_workers} processes")
+
+    return CostTrackingProcessParallelController
 
 
 # ------------------------------------------------------------------
@@ -177,6 +288,7 @@ async def run(
 ) -> DiscoveryResult:
     """Run evolution using the OpenEvolve package."""
     from openevolve.controller import OpenEvolve
+    import openevolve.controller as oe_controller_module
 
     from skydiscover.api import DiscoveryResult
     from skydiscover.config import bridge_provider_env
@@ -191,6 +303,13 @@ async def run(
         original_sys_prompt = oe_config.prompt.system_message or ""
     if feedback_reader and original_sys_prompt:
         feedback_reader.set_current_prompt(original_sys_prompt)
+
+    cost_log_path = os.path.join(output_dir, "llm_cost_events.jsonl")
+    _install_openevolve_openai_cost_tracking(cost_log_path)
+    original_parallel_controller = oe_controller_module.ProcessParallelController
+    oe_controller_module.ProcessParallelController = _build_cost_tracking_parallel_controller(
+        cost_log_path
+    )
 
     controller = OpenEvolve(
         initial_program_path=program_path,
@@ -253,7 +372,11 @@ async def run(
 
         poll_task = asyncio.create_task(_poll_programs())
 
-    best = await controller.run(iterations=iterations)
+    try:
+        best = await controller.run(iterations=iterations)
+    finally:
+        oe_controller_module.ProcessParallelController = original_parallel_controller
+        _restore_openevolve_openai_cost_tracking()
 
     if poll_task:
         poll_task.cancel()
@@ -278,6 +401,9 @@ async def run(
 
     best_skydiscover = _to_skydiscover_program(best) if best else None
     best_score = _score_of(best.metrics) if best else 0.0
+    llm_cost_summary = make_llm_cost_summary(load_cost_events(cost_log_path))
+    with open(os.path.join(output_dir, "llm_cost_summary.json"), "w") as f:
+        json.dump(llm_cost_summary, f, indent=2)
 
     return DiscoveryResult(
         best_program=best_skydiscover,
@@ -286,4 +412,5 @@ async def run(
         metrics=(best.metrics or {}) if best else {},
         output_dir=output_dir,
         initial_score=initial_score,
+        llm_cost_summary=llm_cost_summary,
     )

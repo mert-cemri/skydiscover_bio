@@ -6,11 +6,13 @@ picked up automatically.
 """
 
 import asyncio
+import json
 import logging
 from typing import Any, Dict, Optional
 
 from skydiscover.api import DiscoveryResult
 from skydiscover.config import Config
+from skydiscover.extras.external.cost_utils import make_llm_cost_summary
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +26,7 @@ def _map_config(config: Config, iterations: Optional[int], evaluator_path: str, 
     """Convert SkyDiscover Config to ShinkaEvolve's three config objects."""
     from dataclasses import fields as dc_fields
 
-    from shinka.core.runner import EvolutionConfig
+    from shinka.core import EvolutionConfig
     from shinka.database import DatabaseConfig as ShinkaDBC
     from shinka.launch import LocalJobConfig
 
@@ -144,6 +146,77 @@ def _to_skydiscover_program(sp):
     )
 
 
+async def _build_shinka_cost_summary(runner) -> Dict[str, Any]:
+    """Build a standard cost summary from ShinkaEvolve's internal metadata."""
+    events = []
+    extra_costs: Dict[str, float] = {
+        "embedding": 0.0,
+        "novelty": 0.0,
+        "meta": 0.0,
+        "prompt_evolution": 0.0,
+    }
+
+    all_programs = runner.db.get_all_programs() if runner.db else []
+    generation_adjustment = 0.0
+    for program in all_programs:
+        metadata = getattr(program, "metadata", None) or {}
+        llm_result = metadata.get("llm_result") or {}
+        if isinstance(llm_result, dict):
+            llm_cost = float(llm_result.get("cost") or 0.0)
+            events.append(
+                {
+                    "usage_category": "generation",
+                    "model_name": llm_result.get("model_name"),
+                    "input_tokens": int(llm_result.get("input_tokens") or 0),
+                    "output_tokens": int(llm_result.get("output_tokens") or 0),
+                    "total_tokens": int(llm_result.get("input_tokens") or 0)
+                    + int(llm_result.get("output_tokens") or 0),
+                    "input_cost_usd": float(llm_result.get("input_cost") or 0.0),
+                    "output_cost_usd": float(llm_result.get("output_cost") or 0.0),
+                    "total_cost_usd": llm_cost,
+                }
+            )
+            generation_adjustment += max(0.0, float(metadata.get("api_costs") or 0.0) - llm_cost)
+        else:
+            generation_adjustment += float(metadata.get("api_costs") or 0.0)
+
+        extra_costs["embedding"] += float(metadata.get("embed_cost") or 0.0)
+        extra_costs["novelty"] += float(metadata.get("novelty_cost") or 0.0)
+        extra_costs["meta"] += float(metadata.get("meta_cost") or 0.0)
+
+    if generation_adjustment:
+        extra_costs["generation"] = generation_adjustment
+
+    if runner.prompt_db is not None:
+        try:
+            extra_costs["prompt_evolution"] += float(runner.prompt_db.get_total_evolution_costs())
+        except Exception as e:
+            logger.warning(f"Failed to get prompt evolution costs: {e}")
+
+    summary = make_llm_cost_summary(events, extra_costs)
+    try:
+        total_cost = await runner._get_total_api_costs()
+        delta = total_cost - summary["total"]["total_cost_usd"]
+        if delta > 1e-9:
+            summary["by_category"].setdefault(
+                "generation_adjustment",
+                {
+                    "call_count": 0,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "total_tokens": 0,
+                    "input_cost_usd": 0.0,
+                    "output_cost_usd": 0.0,
+                    "total_cost_usd": 0.0,
+                },
+            )["total_cost_usd"] += delta
+            summary["total"]["total_cost_usd"] += delta
+    except Exception as e:
+        logger.warning(f"Failed to compute total ShinkaEvolve API costs: {e}")
+
+    return summary
+
+
 # ------------------------------------------------------------------
 # Public entry point
 # ------------------------------------------------------------------
@@ -159,7 +232,7 @@ async def run(
     feedback_reader=None,
 ) -> DiscoveryResult:
     """Run evolution using the ShinkaEvolve package."""
-    from shinka.core import AsyncEvolutionRunner
+    from shinka.core import ShinkaEvolveRunner
 
     from skydiscover.api import DiscoveryResult
     from skydiscover.config import bridge_provider_env
@@ -203,7 +276,7 @@ if __name__ == "__main__":
         json.dump(result, f)
 """
 
-    runner = AsyncEvolutionRunner(
+    runner = ShinkaEvolveRunner(
         evo_config=evo_config,
         job_config=job_config,
         db_config=db_config,
@@ -260,7 +333,7 @@ if __name__ == "__main__":
 
         poll_task = asyncio.create_task(_poll_programs())
 
-    await runner.run()
+    await runner.run_async()
 
     if poll_task:
         poll_task.cancel()
@@ -289,6 +362,9 @@ if __name__ == "__main__":
 
     best_skydiscover = _to_skydiscover_program(best_sp) if best_sp else None
     best_score = float(best_sp.combined_score or 0.0) if best_sp else 0.0
+    llm_cost_summary = await _build_shinka_cost_summary(runner)
+    with open(f"{output_dir}/llm_cost_summary.json", "w") as f:
+        json.dump(llm_cost_summary, f, indent=2)
 
     return DiscoveryResult(
         best_program=best_skydiscover,
@@ -297,4 +373,5 @@ if __name__ == "__main__":
         metrics=best_skydiscover.metrics if best_skydiscover else {},
         output_dir=output_dir,
         initial_score=initial_score,
+        llm_cost_summary=llm_cost_summary,
     )

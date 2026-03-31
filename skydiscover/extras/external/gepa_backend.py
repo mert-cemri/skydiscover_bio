@@ -7,6 +7,7 @@ objective/background parameters.
 """
 
 import importlib.util
+import json
 import logging
 import os
 import sys
@@ -16,6 +17,7 @@ from typing import Any, Dict
 
 from skydiscover.api import DiscoveryResult
 from skydiscover.config import Config, _parse_model_spec
+from skydiscover.extras.external.cost_utils import build_cost_event, make_llm_cost_summary
 
 logger = logging.getLogger(__name__)
 
@@ -209,6 +211,7 @@ async def run(
     from skydiscover.api import DiscoveryResult
     from skydiscover.config import bridge_provider_env
     from skydiscover.search.base_database import Program
+    import litellm
 
     bridge_provider_env(config_obj)
     _ensure_litellm_api_key(config_obj)
@@ -278,6 +281,22 @@ async def run(
     logging.getLogger().addHandler(file_handler)
 
     # Run GEPA — optimize_anything is synchronous
+    cost_events = []
+    original_completion = litellm.completion
+
+    def tracked_completion(*args, **kwargs):
+        response = original_completion(*args, **kwargs)
+        model_name = kwargs.get("model") or getattr(response, "model", None) or ""
+        cost_events.append(
+            build_cost_event(
+                model_name=model_name,
+                usage=getattr(response, "usage", None),
+                usage_category="generation",
+            )
+        )
+        return response
+
+    litellm.completion = tracked_completion
     try:
         result = optimize_anything(
             seed_candidate=seed_solution,
@@ -287,6 +306,7 @@ async def run(
             config=gepa_config,
         )
     finally:
+        litellm.completion = original_completion
         logging.getLogger().removeHandler(file_handler)
         file_handler.close()
 
@@ -330,6 +350,10 @@ async def run(
             indent=2,
         )
 
+    llm_cost_summary = make_llm_cost_summary(cost_events)
+    with open(os.path.join(output_dir, "llm_cost_summary.json"), "w") as f:
+        json.dump(llm_cost_summary, f, indent=2)
+
     return DiscoveryResult(
         best_program=best_program,
         best_score=best_score,
@@ -337,4 +361,5 @@ async def run(
         metrics={"combined_score": best_score, "total_candidates": result.num_candidates},
         output_dir=output_dir,
         initial_score=initial_score,
+        llm_cost_summary=llm_cost_summary,
     )
